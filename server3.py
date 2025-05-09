@@ -1,11 +1,19 @@
 import asyncio
+import inspect
 import json
 import sqlite3
+from base64 import b64decode, b64encode
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey, Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
 
+_HOST = '127.0.0.1'
+_PORT = 8888
 _DB_NAME = 'test_database.db'
 _MAX_REQUEST_BYTES = 4096
+# Debug keys
+kirby_key = Ed25519PrivateKey.from_private_bytes(bytes.fromhex('00' * 32))
+dedede_key = Ed25519PrivateKey.from_private_bytes(bytes.fromhex('ff' * 32))
 
 # Order needs to be:
 # Request is made
@@ -15,36 +23,126 @@ _MAX_REQUEST_BYTES = 4096
 
 
 def setup():
-    with sqlite3.connect(_DB_NAME) as connection:
+    with sqlite3.connect(_DB_NAME, autocommit=True) as connection:
         cursor = connection.cursor()
+        cursor.execute('DROP TABLE IF EXISTS users')
+        cursor.execute('DROP TABLE IF EXISTS messages')
+        cursor.execute('DROP TABLE IF EXISTS exchange_keys')
         cursor.execute((
             'CREATE TABLE IF NOT EXISTS users('
             '   id INTEGER PRIMARY KEY,'
-            '   verification_key BYTEA NOT NULL'
-            ')'            
+            '   verification_key CHAR(44) UNIQUE NOT NULL'
+            ')'
         ))
         cursor.execute(
-            'SELECT id FROM users WHERE verification_key = "12e0" LIMIT 1',
+            'INSERT INTO users (verification_key) VALUES (?)',
+            (b64encode(kirby_key.public_key().public_bytes_raw()).decode(),),
         )
-        print(cursor.fetchone())
-
-def identify_user(verification_key: str):
-    with sqlite3.connect(_DB_NAME) as connection:
-        cursor = connection.cursor()
         cursor.execute(
-            (
-                'SELECT id'
-                'FROM users'
-                'WHERE verification_key = ?'
-                'LIMIT 1'
-            ),
+            'INSERT INTO users (verification_key) VALUES (?)',
+            (b64encode(dedede_key.public_key().public_bytes_raw()).decode(),),
+        )
+        cursor.execute((
+            'CREATE TABLE IF NOT EXISTS messages('
+            '   id INTEGER PRIMARY KEY,'
+            '   sender_id INTEGER NOT NULL,'
+            '   recipient_id INTEGER NOT NULL,'
+            '   encrypted_message TEXT NOT NULL,'
+            '   signature CHAR(88) NOT NULL,'
+            '   timestamp DATETIME NOT NULL,'
+            '   FOREIGN KEY (sender_id) REFERENCES users(id),'
+            '   FOREIGN KEY (recipient_id) REFERENCES users(id)'
+            ')'
+        ))
+        cursor.execute((
+            'CREATE TABLE IF NOT EXISTS exchange_keys('
+            '   id INTEGER PRIMARY KEY,'
+            '   sender_id INTEGER NOT NULL,'
+            '   recipient_id INTEGER NOT NULL,'
+            '   public_exchange_key CHAR(44) NOT NULL,'
+            '   signature CHAR(88) NOT NULL,'
+            '   FOREIGN KEY (sender_id) REFERENCES users(id),'
+            '   FOREIGN KEY (recipient_id) REFERENCES users(id),'
+            '   UNIQUE(sender_id, recipient_id) ON CONFLICT REPLACE'
+            ')'
+        ))
+
+def get_user_id(verification_key: str) -> int:
+    if not isinstance(verification_key, str):
+        raise TypeError('Invalid verification key.')
+    with sqlite3.connect(_DB_NAME, autocommit=True) as connection:
+        cursor = connection.cursor()
+        # Attempt to retrieve the key's associated id.
+        cursor.execute(
+            'SELECT id FROM users WHERE verification_key = ? LIMIT 1',
             (verification_key,),
         )
         result = cursor.fetchone()
-        if result is not None:
-            return result[0]
-        return result
+        # If the key is not found but is a valid format, register it.
+        if result is None:
+            try:
+                Ed25519PublicKey.from_public_bytes(
+                    data=b64decode(verification_key.encode()),
+                )
+            except:
+                raise ValueError('Invalid verification key.')
+            cursor.execute(
+                'INSERT INTO users (verification_key) VALUES (?)',
+                (verification_key,),
+            )
+            cursor.execute(
+                'SELECT id FROM users WHERE verification_key = ? LIMIT 1',
+                (verification_key,),
+            )
+            result = cursor.fetchone()
+        # Return the id associated with the existing or newly registered key.
+        return result[0]
 
+def send_exchange_key(
+        user_id,
+        recipient_verification_key,
+        exchange_key,
+        exchange_key_signature,
+    ) -> dict:
+    # For now, don't worry about failure responses, just let it raise errors.
+    # Probably need to put failure responses extracted from an exception raised to the listen function
+    recipient_id = get_user_id(recipient_verification_key)
+
+    # Validate the exchange key:
+    # Worth considering shifting validation to the client
+    try:
+        X25519PublicKey.from_public_bytes(b64decode(exchange_key.encode()))
+    except:
+        raise ValueError('Invalid exchange key.')
+    
+    # Post the exchange key to the database:
+    with sqlite3.connect(_DB_NAME, autocommit=True) as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            (
+                'INSERT INTO exchange_keys ( '
+                '   sender_id, '
+                '   recipient_id, '
+                '   public_exchange_key, '
+                '   signature '
+                ') '
+                'VALUES ('
+                '   ?, '
+                '   ?, '
+                '   ?, '
+                '   ? '
+                ') '
+            ),
+            (
+                user_id,
+                recipient_id,
+                exchange_key,
+                exchange_key_signature,
+            ),
+        )
+    
+    # Return a successful response:
+    return {'status': 'ok', 'message': 'Success.'}
 
 async def message_request(data):
     user_id = identify_user(data['verification_key'])
@@ -86,6 +184,7 @@ async def init_dm(data: dict) -> dict:
 _handlers = {
     'INIT_DM': init_dm,
     'MESSAGE_REQUEST': message_request,
+    'SEND_EXCHANGE_KEY': send_exchange_key,
 }
 
 # Should lead with identifying the user for all handlers except REGISTER
@@ -93,7 +192,7 @@ _handlers = {
 # Or not. Ugh. Too exhausted for this right now. In general: store keys as hex after all. Require ed25519.
 # Put in some kind of identification before the main handling, feed it as an argument
 
-async def handle_request(request: dict):
+async def _handle_request(request: dict):
     required_parameters = ['data', 'verification_key', 'signature']
     if all(parameter in request for parameter in required_parameters):
         # Verify the request with the key provided:
@@ -120,6 +219,51 @@ async def handle_request(request: dict):
         
     else:
         return {'status': 'error', 'message': 'Malformed Request'}
+    
+def handle_request(data, verification_key, signature, *args, **kwargs) -> dict:
+    # Verify the structure of the data and the command's existence:
+    if not isinstance(data, dict):
+        raise TypeError('Malformed request.')
+    elif 'command' not in data:
+        raise TypeError('No command parameter provided.')
+    elif data.get('command') not in _handlers:
+        raise ValueError(f'{data.get('command')} is not a recognised command.')
+    
+    # Verify that the key is valid and the signature is correct:
+    try:
+        key_bytes = b64decode(verification_key.encode())
+        loaded_key = Ed25519PublicKey.from_public_bytes(key_bytes)
+    except:
+        raise ValueError('Invalid verification key.')
+    try:
+        loaded_signature = b64decode(signature.encode())
+        loaded_key.verify(loaded_signature, json.dumps(data).encode())
+    except:
+        raise ValueError('Invalid signature.')
+    
+    # Retrieve the user id and store it in the data dictionary:
+    data['user_id'] = get_user_id(verification_key)
+    
+    # Retrieve the handler and verify the arguments:
+    handler = _handlers.get(data.get('command'))
+    relevant_data = {}
+    missing_parameters = []
+    for k, v in inspect.signature(handler).parameters.items():
+        if not isinstance(k, str):
+            raise TypeError('Malformed request.')
+        elif k in data:
+            relevant_data[k] = data[k]
+        elif v.default == inspect.Parameter.empty:
+            missing_parameters.append(k)
+    if missing_parameters:
+        raise ValueError((
+            f'Required parameters {', '.join(missing_parameters)} for '
+            f'command {data.get('command')} are missing from the request.'
+        ))
+    
+    # Get the response from the handler:
+    return handler(**relevant_data)
+
 
 async def listen(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     # Retrieve and report the connection details:
@@ -130,13 +274,18 @@ async def listen(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     print(f'reading from {address}')
     raw_request = await reader.read(_MAX_REQUEST_BYTES)
     print(f'verifying from {address}')
-    print(raw_request)
     if not reader.at_eof():
         try:
             processed_request = json.loads(raw_request.decode())
-            response = await handle_request(processed_request)
+            required_arguments = ['data', 'verification_key', 'signature']
+            if any(x not in processed_request for x in required_arguments):
+                raise TypeError('Malformed Request')
+            processed_request['data'] = json.loads(processed_request['data'])
+            response = handle_request(**processed_request)
         except json.JSONDecodeError:
             response = {'status': 'error', 'message': 'Malformed Request'}
+        except Exception as e:
+            response = {'status': 'error', 'message': str(e)}
     else:
         response = {'status': 'error', 'message': 'Request Too Large'}
 
@@ -211,7 +360,7 @@ async def listen(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
 #     await writer.wait_closed()
 
 async def main():
-    server = await asyncio.start_server(listen, '127.0.0.1', 8888)
+    server = await asyncio.start_server(listen, _HOST, _PORT)
     async with server:
         await server.serve_forever()
 
