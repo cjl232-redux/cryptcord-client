@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import json
 import sqlite3
-from base64 import b64decode, b64encode
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey, Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
@@ -21,6 +21,8 @@ dedede_key = Ed25519PrivateKey.from_private_bytes(bytes.fromhex('ff' * 32))
 # the technical term is by just getting a correct public key and forcing it to continually 
 # check an incorrect signature
 
+#TODO: probably ditch the replacement after all, instead just... hm... not sure, really
+# The problem is you could clog up the system by sending thousands of exchange keys to random addresses
 
 def setup():
     with sqlite3.connect(_DB_NAME, autocommit=True) as connection:
@@ -34,14 +36,6 @@ def setup():
             '   verification_key CHAR(44) UNIQUE NOT NULL'
             ')'
         ))
-        cursor.execute(
-            'INSERT INTO users (verification_key) VALUES (?)',
-            (b64encode(kirby_key.public_key().public_bytes_raw()).decode(),),
-        )
-        cursor.execute(
-            'INSERT INTO users (verification_key) VALUES (?)',
-            (b64encode(dedede_key.public_key().public_bytes_raw()).decode(),),
-        )
         cursor.execute((
             'CREATE TABLE IF NOT EXISTS messages('
             '   id INTEGER PRIMARY KEY,'
@@ -59,7 +53,7 @@ def setup():
             '   id INTEGER PRIMARY KEY,'
             '   sender_id INTEGER NOT NULL,'
             '   recipient_id INTEGER NOT NULL,'
-            '   public_exchange_key CHAR(44) NOT NULL,'
+            '   public_key CHAR(44) NOT NULL,'
             '   signature CHAR(88) NOT NULL,'
             '   FOREIGN KEY (sender_id) REFERENCES users(id),'
             '   FOREIGN KEY (recipient_id) REFERENCES users(id),'
@@ -82,7 +76,7 @@ def get_user_id(verification_key: str) -> int:
         if result is None:
             try:
                 Ed25519PublicKey.from_public_bytes(
-                    data=b64decode(verification_key.encode()),
+                    data=urlsafe_b64decode(verification_key.encode()),
                 )
             except:
                 raise ValueError('Invalid verification key.')
@@ -100,18 +94,20 @@ def get_user_id(verification_key: str) -> int:
 
 def send_exchange_key(
         user_id,
-        recipient_verification_key,
-        exchange_key,
-        exchange_key_signature,
+        recipient_ed25519_public_key,
+        x25519_public_key,
+        x25519_public_key_signature,
     ) -> dict:
     # For now, don't worry about failure responses, just let it raise errors.
     # Probably need to put failure responses extracted from an exception raised to the listen function
-    recipient_id = get_user_id(recipient_verification_key)
+    recipient_id = get_user_id(recipient_ed25519_public_key)
 
     # Validate the exchange key:
-    # Worth considering shifting validation to the client
+    # Worth considering shifting validation to the client for performance, especially if blocking
     try:
-        X25519PublicKey.from_public_bytes(b64decode(exchange_key.encode()))
+        X25519PublicKey.from_public_bytes(
+            data=urlsafe_b64decode(x25519_public_key.encode()),
+        )
     except:
         raise ValueError('Invalid exchange key.')
     
@@ -123,7 +119,7 @@ def send_exchange_key(
                 'INSERT INTO exchange_keys ( '
                 '   sender_id, '
                 '   recipient_id, '
-                '   public_exchange_key, '
+                '   public_key, '
                 '   signature '
                 ') '
                 'VALUES ('
@@ -136,13 +132,35 @@ def send_exchange_key(
             (
                 user_id,
                 recipient_id,
-                exchange_key,
-                exchange_key_signature,
+                x25519_public_key,
+                x25519_public_key_signature,
             ),
         )
     
     # Return a successful response:
-    return {'status': 'ok', 'message': 'Success.'}
+    return {'status': 'ok'}
+
+def retrieve_exchange_keys(user_id):
+    query = (
+        'SELECT '
+        '   u.verification_key, '
+        '   e.public_key, '
+        '   e.signature '
+        'FROM '
+        '   exchange_keys e '
+        'LEFT JOIN '
+        '   users u '
+        'ON '
+        '   e.sender_id = u.id '
+        'WHERE '
+        '   e.recipient_id = ? '
+    )
+    with sqlite3.connect(_DB_NAME, autocommit=False) as connection:
+        cursor = connection.cursor()
+        cursor.execute(query, (user_id,))
+        exchange_keys = cursor.fetchall()
+    return {'status': 'ok', 'exchange_keys': exchange_keys}
+        
 
 async def message_request(data):
     user_id = identify_user(data['verification_key'])
@@ -185,6 +203,7 @@ _handlers = {
     'INIT_DM': init_dm,
     'MESSAGE_REQUEST': message_request,
     'SEND_EXCHANGE_KEY': send_exchange_key,
+    'RETRIEVE_EXCHANGE_KEYS': retrieve_exchange_keys,
 }
 
 # Should lead with identifying the user for all handlers except REGISTER
@@ -220,7 +239,7 @@ async def _handle_request(request: dict):
     else:
         return {'status': 'error', 'message': 'Malformed Request'}
     
-def handle_request(data, verification_key, signature, *args, **kwargs) -> dict:
+def handle_request(data, sender_public_key, signature) -> dict:
     # Verify the structure of the data and the command's existence:
     if not isinstance(data, dict):
         raise TypeError('Malformed request.')
@@ -231,18 +250,18 @@ def handle_request(data, verification_key, signature, *args, **kwargs) -> dict:
     
     # Verify that the key is valid and the signature is correct:
     try:
-        key_bytes = b64decode(verification_key.encode())
+        key_bytes = urlsafe_b64decode(sender_public_key.encode())
         loaded_key = Ed25519PublicKey.from_public_bytes(key_bytes)
     except:
         raise ValueError('Invalid verification key.')
     try:
-        loaded_signature = b64decode(signature.encode())
+        loaded_signature = urlsafe_b64decode(signature.encode())
         loaded_key.verify(loaded_signature, json.dumps(data).encode())
     except:
         raise ValueError('Invalid signature.')
     
     # Retrieve the user id and store it in the data dictionary:
-    data['user_id'] = get_user_id(verification_key)
+    data['user_id'] = get_user_id(sender_public_key)
     
     # Retrieve the handler and verify the arguments:
     handler = _handlers.get(data.get('command'))
@@ -277,11 +296,16 @@ async def listen(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     if not reader.at_eof():
         try:
             processed_request = json.loads(raw_request.decode())
-            required_arguments = ['data', 'verification_key', 'signature']
-            if any(x not in processed_request for x in required_arguments):
+            required_arguments = ['data', 'public_key', 'signature']
+            if len(processed_request) != len(required_arguments):
                 raise TypeError('Malformed Request')
-            processed_request['data'] = json.loads(processed_request['data'])
-            response = handle_request(**processed_request)
+            elif any(x not in processed_request for x in required_arguments):
+                raise TypeError('Malformed Request')
+            response = handle_request(
+                data=processed_request.get('data'),
+                sender_public_key=processed_request.get('public_key'),
+                signature=processed_request.get('signature'),
+            )
         except json.JSONDecodeError:
             response = {'status': 'error', 'message': 'Malformed Request'}
         except Exception as e:

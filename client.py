@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.serialization import load_pem_public_key, lo
 
 _HOST = '127.0.0.1'
 _PORT = 8888
-_DB_NAME = 'test_database.db'
+_DB_NAME = 'client_database.db'
 _MAX_REQUEST_BYTES = 4096
 # Debug keys
 kirby_key = ed25519.Ed25519PrivateKey.from_private_bytes(bytes.fromhex('00' * 32))

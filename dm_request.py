@@ -45,7 +45,7 @@ async def send_dm_request(
     data = {
         'command': 'MESSAGE_REQUEST',
         'public_exchange_key': key_bytes.hex(),
-        'recipient_key': signature_key.public_key().public_bytes_raw().hex(),
+        'recipient_verification_key': signature_key.public_key().public_bytes_raw().hex(),
     }
     request = {
         'data': data,
@@ -64,6 +64,40 @@ async def send_dm_request(
     writer.close()
     await writer.wait_closed()
 
+
+async def send_exchange_key(
+        host: str,
+        port: int,
+        recipient_key: ed25519.Ed25519PublicKey,
+        signature_key: ed25519.Ed25519PrivateKey,
+) -> None:
+    private_exchange_key = X25519PrivateKey.generate()
+    public_exchange_key = private_exchange_key.public_key()
+    key_bytes = public_exchange_key.public_bytes_raw()
+    signature_bytes = signature_key.sign(key_bytes)
+    
+    # Construct and send the request:
+    data = {
+        'command': 'MESSAGE_REQUEST',
+        'public_exchange_key': key_bytes.hex(),
+        'recipient_verification_key': dede
+    }
+    request = {
+        'data': data,
+        'verification_key': signature_key.public_key().public_bytes_raw().hex(),
+        'signature': signature_key.sign(json.dumps(data).encode()).hex(),
+    }
+    # Open the connection:
+    reader, writer = await asyncio.open_connection(host, port)
+    print(len(json.dumps(request)))
+    writer.write(json.dumps(request).encode())
+    await writer.drain()
+
+    response = await reader.read()
+    print('Received from server:', response.decode())
+
+    writer.close()
+    await writer.wait_closed()
     
 
 with open('verification_keys/dedede.pem', 'rb') as file:
