@@ -3,6 +3,8 @@ import tkinter as tk
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from tkinter import filedialog, messagebox, ttk
 
+# TODO: Unlike the below, actually todo - enforce ed25519 on key load
+
 # TODO: rework validation. Should be done on clicking submit for encrypted
 # and put up a message if failed. Alternatively: just go through to the password entry?
 # Sadly, I think that's smarter... I'll implement this soon
@@ -13,8 +15,8 @@ from tkinter import filedialog, messagebox, ttk
 # That lets me keep this thing I'm fond of, as long as I change the validation.
 
 class _SignatureKeyEntryFrame(ttk.Frame):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, master, *args, **kwargs):
+        super().__init__(master, *args, **kwargs)
         self.file_path_header_label = ttk.Label(
             master=self,
             text='File Path:',
@@ -131,8 +133,8 @@ class _SignatureKeyEntryFrame(ttk.Frame):
         self.missing_file_warning.grid_forget()
 
 class _FooterButtonFrame(ttk.Frame):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, master, *args, **kwargs):
+        super().__init__(master, *args, **kwargs)
         self.submit_button = ttk.Button(self, text='Submit', state='disabled')
         self.submit_button.grid(column=1, row=0, sticky='se', padx=(0, 5))
         self.cancel_button = ttk.Button(self, text='Cancel')
@@ -140,8 +142,8 @@ class _FooterButtonFrame(ttk.Frame):
         self.columnconfigure(index=0, weight=1)
 
 class SignatureKeyDialog(tk.Toplevel):
-    def __init__(self, file_path : str = None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, master, file_path : str = None, *args, **kwargs):
+        super().__init__(master, *args, **kwargs)
         self.grab_set()
         self.file_path = file_path
         self.signature_key = None
@@ -267,8 +269,8 @@ class SignatureKeyDialog(tk.Toplevel):
         self.destroy()
 
 class PasswordEntryDialog(tk.Toplevel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, master, *args, **kwargs):
+        super().__init__(master, *args, **kwargs)
         self.private_key = None
         self.title('Signature Key Password')
         self.label = ttk.Label(
@@ -276,7 +278,7 @@ class PasswordEntryDialog(tk.Toplevel):
             text='Please enter the password to decrypt your signature key.',
         )
         self.label.grid(column=0, row=0, columnspan=2)
-        self.password_entry = ttk.Entry(master=self, show='•')
+        self.password_entry = ttk.Entry(self, show='•')
         self.password_entry.grid(column=0, row=1, sticky='ew')
         self.show_password = tk.BooleanVar(self)
         self.show_password_button = ttk.Button(

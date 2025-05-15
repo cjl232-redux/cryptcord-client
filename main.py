@@ -8,7 +8,10 @@ import tkinter.messagebox
 import yaml
 from components import HeaderBar, Server
 from channel import Channel
-from dialogs import PasswordEntryDialog, SignatureKeyDialog
+from app_components.dialogs import PasswordEntryDialog, SignatureKeyDialog
+from app_components.contacts import ContactsPane
+import sqlite3
+from base64 import urlsafe_b64encode
 
 # Okay. First step to focus on: a series of startup windows.
 # Of particular note, need to verify if a password is required to decrypt.
@@ -22,7 +25,7 @@ from dialogs import PasswordEntryDialog, SignatureKeyDialog
 # Only caveat there is the need to handle password input... may need a login dialog
 
 class Application(tk.Tk):
-    def __init__(self):
+    def __init__(self, client_db: sqlite3.Connection):
         # Call the Tk constructor, then withdraw the main window:
         super().__init__()
         self.withdraw()
@@ -57,11 +60,23 @@ class Application(tk.Tk):
 
         # Restore the main window and render the server view.
         self.deiconify()
-        self.label = ttk.Label(self, text=self.signature_key.public_key().public_bytes(encoding=Encoding.PEM, format=PublicFormat.SubjectPublicKeyInfo))
+        public_bytes = self.signature_key.public_key().public_bytes_raw()
+        b64_public_key = urlsafe_b64encode(public_bytes)
+        self.label = ttk.Label(
+            master=self,
+            text=f'Public key: {b64_public_key.decode()}',
+        )
         self.label.grid(column=0, row=0)
-        
-application = Application()
-application.mainloop()
+        self.notebook = ttk.Notebook(self)
+        self.notebook.add(
+            child=ContactsPane(client_db),
+            text='Contacts',
+        )
+        self.notebook.grid(column=0, row=1)
+
+with sqlite3.connect('client_database.db') as client_db:
+    application = Application(client_db)
+    application.mainloop()
 
 # Require signature key to retrieve messages
 # Require private key to decrypt them
