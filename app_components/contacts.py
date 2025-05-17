@@ -1,68 +1,71 @@
 import sqlite3
 import tkinter as tk
+import tkinter.messagebox as messagebox
+import tkinter.ttk as ttk
 from contextlib import closing
-from tkinter import ttk
+from app_components.scrollable_frames import VerticalScrollableFrame
 
-class ContactEntry(ttk.Frame):
-    def __init__(
-            self,
-            master,
-            id: int,
-            name: str,
-            exchanged: bool,
-            *args, 
-            **kwargs,
-        ):
-        super().__init__(master, *args, **kwargs)
-        self.id = id
-        self.name_label = ttk.Label(self, text=name)
-        self.name_label.grid(row=0, column=0)
-        self.message_button = ttk.Button(self, text='No Key')
-        if exchanged:
-            self.message_button.config(text='Message')
-        self.message_button.grid(row=0, column=1)
+class AddContactDialog(tk.Toplevel):
+    def __init__(self, client_db: sqlite3.Connection, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-class ContactEntries(ttk.Frame):
+class ExistingContactsFrame(VerticalScrollableFrame):
     def __init__(self, master, client_db: sqlite3.Connection, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
-        self.entries = []
-        self.scrollbar = ttk.Scrollbar(self)
-        self.scrollbar.grid(column=1, row=0)
-        self.canvas = tk.Canvas(self, yscrollcommand=self.scrollbar.set)
-        self.canvas.grid(column=0, row=0)
-        with closing(client_db.cursor()) as cursor:
-            cursor.execute((
-                'SELECT '
-                '   contacts.id, '
-                '   contacts.nickname, '
-                '   encryption_keys.id IS NOT NULL as exchange_complete '
-                'FROM '
-                '   contacts '
-                'LEFT JOIN '
-                '   encryption_keys '
-                'ON '
-                '   contacts.id = encryption_keys.contact_id '
-                'ORDER BY '
-                '   contacts.nickname '
-            ))
+        self.name_labels: list[ttk.Label] = []
+        self.client_db = client_db
+        self.load_contacts()
+
+    def load_contacts(self):
+        for child in self.interior.winfo_children():
+            child.grid_forget()
+        with closing(self.client_db.cursor()) as cursor:
+            cursor.execute(' '.join([
+                'SELECT',
+                '    contacts.id,',
+                '    contacts.name,',
+                '    pending_exchanges.id IS NOT NULL AS exchange_pending,',
+                '    encryption_keys.id IS NOT NULL AS exchange_complete',
+                'FROM',
+                '    contacts',
+                'LEFT JOIN',
+                '    encryption_keys',
+                'ON',
+                '    contacts.id = encryption_keys.contact_id',
+                'LEFT JOIN',
+                '    pending_exchanges',
+                'ON',
+                '    contacts.id = pending_exchanges.contact_id',
+                'ORDER BY',
+                '    contacts.name',
+            ]))
             for i, contact in enumerate(cursor.fetchall()):
-                entry = ContactEntry(
-                    master=self.canvas,
-                    id=contact[0],
-                    name=contact[1],
-                    exchanged=contact[2],
+                label = ttk.Label(self.interior, text=contact[1])
+                label.grid(column=0, row=i, sticky='w', pady=(0, 5,))
+                remove_button = ttk.Button(
+                    master=self.interior,
+                    text='Remove',
+                    command=lambda id=contact[0]: self.remove_contact(id),
                 )
-                entry.grid(column=0, row=i)
-                self.entries.append(entry)
-                for j in range(100):
-                    entry = ContactEntry(
-                        master=self.canvas,
-                        id=contact[0],
-                        name=contact[1],
-                        exchanged=contact[2],
-                    )
-                    entry.grid(column=0, row=i + j)
-                    self.entries.append(entry)
+                remove_button.grid(column=1, row=i, pady=(0, 5,))
+            self.interior.columnconfigure(0, weight=1)
+
+    def remove_contact(self, id: int):
+        client_db: sqlite3.Connection = self.winfo_toplevel().client_db
+        with closing(client_db.cursor()) as cursor:
+            cursor.execute('SELECT name FROM contacts WHERE id = ?', (id,))
+            response = messagebox.askyesno(
+                title='Confirm Contact Deletion',
+                message=(
+                    f'Are you sure you wish to delete {cursor.fetchone()[0]}? '
+                    f'This will permanently delete any shared keys and '
+                    f'saved messages.'
+                ),
+            )
+            if response:
+                cursor.execute('DELETE FROM contacts WHERE id = ?', (id,))
+                self.load_contacts()
+                
 
 class ContactsPane(ttk.Frame):
     def __init__(self, master, client_db: sqlite3.Connection, *args, **kwargs):
@@ -70,18 +73,31 @@ class ContactsPane(ttk.Frame):
         self.client_db = client_db
         self.add_button = ttk.Button(self, text='Add Contact')
         self.add_button.grid(column=0, row=0)
+        self.existing_contacts = ExistingContactsFrame(
+            master=self,
+            client_db=self.client_db,
+            scroll_speed=5,
+        )
         self.refresh_button = ttk.Button(
             master=self,
             text='Refresh',
-            command=self.refresh_contacts,
+            command=self.existing_contacts.load_contacts,
         )
         self.refresh_button.grid(column=1, row=0)
-        self.contact_entries = ContactEntries(self, self.client_db)
-        self.contact_entries.grid(column=0, row=1, columnspan=2)
+        self.existing_contacts.grid(
+            column=0,
+            row=1,
+            columnspan=2,
+            sticky='nsew',
+            padx=(5, 0,),
+            pady=(5, 0,),
+        )
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
 
     def refresh_contacts(self):
-        self.contact_entries.grid_forget()
-        self.contact_entries = ContactEntries(self, self.client_db)
-        self.contact_entries.grid(column=0, row=1, columnspan=2)
+        self.existing_contacts.grid_forget()
+        self.existing_contacts = ExistingContactsFrame(self, self.client_db)
+        self.existing_contacts.grid(column=0, row=1, columnspan=2)
 
     

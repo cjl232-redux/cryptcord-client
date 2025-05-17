@@ -1,7 +1,7 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 
-class VerticalScrollFrame(ttk.Frame):
+class VerticalScrollableFrame(ttk.Frame):
     def __init__(self, master, scroll_speed: int = 2, *args, **kwargs):
         # Call the base constructor.
         super().__init__(master, *args, **kwargs)
@@ -21,9 +21,13 @@ class VerticalScrollFrame(ttk.Frame):
 
         # Create and place the interior frame.
         self.interior = ttk.Frame(self.canvas)
-        self.canvas.create_window(0, 0, window=self.interior, anchor='nw')
+        self.window = self.canvas.create_window(0, 0, window=self.interior, anchor='nw')
 
-        # Define and assign a callback for when the interior changes.
+        # Define and assign callbacks.
+        # def _on_configure_canvas(event):
+        #     self.canvas.itemconfig(self.window, width=event.width)
+        # self.canvas.bind('<Configure>', _on_configure_canvas)
+            
         def _on_configure_interior(_):
             self.canvas.configure(scrollregion=self.canvas.bbox('all'))
         self.interior.bind('<Configure>', _on_configure_interior)
@@ -42,7 +46,7 @@ if __name__ == '__main__':
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
 
-            self.frame = VerticalScrollFrame(self)
+            self.frame = VerticalScrollableFrame(self)
             self.frame.grid(column=0, row=0, sticky='nsew')
             self.label = ttk.Label(self, text="Shrink the window to activate the scrollbar.")
             self.button = ttk.Button(self, text='add', command=self.add_buttons)

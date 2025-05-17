@@ -16,6 +16,9 @@ class Application(tk.Tk):
         
         # Set basic properties.
         self.title('Cryptcord')
+        self.client_db = client_db
+
+        # TODO: client db path in settings
 
         # Load stored settings, creating a file if one doesn't exist.
         if not os.path.exists('settings.yaml'):
