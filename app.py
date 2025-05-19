@@ -8,6 +8,9 @@ from app_components.body import Body
 from app_components.dialogs import SignatureKeyDialog
 import database_functions
 
+# So now I have two major dialogs, and they're fundamentally different in appearance.
+# I need to find a way to standardise them.
+
 SETTINGS_FILE_PATH = 'settings.yaml'
 
 class Application(tk.Tk):

@@ -22,7 +22,7 @@ def setup():
         cursor.execute((
             'CREATE TABLE IF NOT EXISTS contacts( '
             '   id INTEGER PRIMARY KEY, '
-            '   nickname VARCHAR(255) UNIQUE NOT NULL, '
+            '   name VARCHAR(255) UNIQUE NOT NULL, '
             '   ed25519_public_key CHAR(44) UNIQUE NOT NULL '
             ')'
         ))

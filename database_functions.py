@@ -38,7 +38,16 @@ def create_tables(conn: sqlite3.Connection):
             '    ) '
         ))
 
+def get_existing_contacts(conn: sqlite3.Connection):
+    with closing(conn.cursor()) as cursor:
+        cursor.execute('SELECT name, ed25519_public_key FROM contacts')
+        return cursor.fetchall()
+
 def add_contact(conn: sqlite3.Connection, name: str, key: str):
     query = 'INSERT INTO contacts(name, ed25519_public_key) VALUES(?, ?)'
     with closing(conn.cursor()) as cursor:
         cursor.execute(query, (name, key))
+
+def delete_contact(conn: sqlite3.Connection, id: int):
+    with closing(conn.cursor()) as cursor:
+        cursor.execute('DELETE FROM contacts WHERE id = ?', (id,))

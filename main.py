@@ -30,7 +30,7 @@ class Application(tk.Tk):
         super().__init__()
         self.withdraw()
 
-        # Set basic values.
+        # Set basic values and store the connection.
         self.title('Cryptcord')
 
         # Load stored settings, creating a file if one doesn't exist.
