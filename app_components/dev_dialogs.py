@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Callable
 import tkinter as tk
 from tkinter import ttk
@@ -25,14 +26,19 @@ class Validator():
 
 type _VarDict = dict[str, tk.StringVar]
 
+@dataclass
+class ButtonData:
+    text: str
+    command: Callable[[ttk.Entry, ttk.Button, tk.StringVar], None]
+
 # Need a button command here
-class Field():
+class Field:
     def __init__(
             self,
             name: str,
             default: str = None,
             read_only: bool = False,
-            button_data: tuple[str, Callable[[ttk.Entry], None]] = None,
+            button_data: ButtonData = None,
             
         ):
         self.name = name
@@ -40,27 +46,72 @@ class Field():
         self.read_only = read_only
         self.button_data = button_data
     
-    def create_variable(self) -> tk.StringVar:
-        return tk.StringVar(value=self.default)
+    # def create_variable(self) -> tk.StringVar:
+    #     return tk.StringVar(value=self.default)
 
-    def create_widgets(
+    def load_widgets(
             self,
-            dialog: tk.Toplevel,
-            variable: tk.StringVar,
-        ) -> tuple[ttk.Label, ttk.Entry, ttk.Button | None]:
+            dialog: 'Dialog',
+            row: int,
+        ) -> tuple[ttk.Label, ttk.Entry, ttk.Button | None, tk.StringVar]:
+        var = tk.StringVar(dialog, value=self.default)
         label = ttk.Label(dialog, text=f'{self.name}:')
-        entry = ttk.Entry(dialog, textvariable=variable)
+        label.grid(column=0, row=row, sticky='w')
+        entry = ttk.Entry(dialog, textvariable=var)
         if self.read_only:
             entry.config(state='disabled')
+        entry.grid(column=1, row=row, sticky='ew')
         if self.button_data is not None:
             button = ttk.Button(
                 master=dialog,
-                text=self.button_data[0],
-                command=lambda x=entry: self.button_data[1](x),
+                text=self.button_data.text,
+                command=lambda x=entry, y=var: self.button_data.command(x, y)
             )
+            button.grid(column=2, row=row, sticky='ew')
         else:
             button = None
-        return label, entry, button
+        return label, entry, button, var
+    
+class PasswordField(Field):
+    def __init__(self):
+        super().__init__(
+            name='Password',
+            button_data=ButtonData('Show/Hide', self.toggle_visibility)
+        )
+    
+    def load_widgets(self, dialog, row):
+        label, entry, button, var = super().load_widgets(dialog, row)
+        entry.config(show='●')
+        return label, entry, button, var
+
+    def toggle_visibility(self, entry: ttk.Entry, _: tk.StringVar):
+        entry.config(show='●' if entry.cget('show') == '' else '')
+
+
+
+
+    # def create_widgets(
+    #         self,
+    #         dialog: 'Dialog',
+    #     ) -> tuple[ttk.Label, ttk.Entry, ButtonVarBundle | None]:
+    #     if self.button_data is not None:
+    #         variable = tk.StringVar(value=self.default)
+    #     else:
+    #         variable = None
+    #     label = ttk.Label(dialog, text=f'{self.name}:')
+    #     entry = ttk.Entry(dialog, textvariable=variable)
+    #     if self.read_only:
+    #         entry.config(state='disabled')
+    #     if self.button_data is not None:
+    #         button = ttk.Button(
+    #             master=dialog,
+    #             text=self.button_data.text,
+    #             command=lambda var=variable: self.button_data.command(var),
+    #         )
+    #         button_var_bundle = ButtonVarBundle(button, variable)
+    #     else:
+    #         button_var_bundle = None
+    #     return label, entry, button_var_bundle
 
 
 class Dialog(tk.Toplevel):
@@ -91,22 +142,40 @@ class Dialog(tk.Toplevel):
             label.grid(column=0, row=row, columnspan=3)
             row += 1
         
-        # Create string variables for each field.
-        self.stringvars = {x: y.create_variable() for x, y in fields.items()}
-
-        # Loop over the supplied fields and create widgets.
+        # Create widgets for each field.
+        self.stringvars = {}
         for key, field in fields.items():
-            stringvar = self.stringvars[key]
-            label, entry, button = field.create_widgets(self, stringvar)
-            label.grid(column=0, row=row, sticky='w')
-            entry.grid(column=1, row=row, sticky='ew')
-            if button is not None:
-                button.grid(column=2, row=row, sticky='ew')
+            self.stringvars[key] = field.load_widgets(self, row)[-1]
             row += 1
+
+        # Add in command buttons.
+        submit_button = ttk.Button(self, text='Submit', command=self.submit)
+        submit_button.grid(column=1, row=row, sticky='e')
+        cancel_button = ttk.Button(self, text='Cancel', command=self.cancel)
+        cancel_button.grid(column=2, row=row, sticky='ew')
+
+        # Configure the grid.
+        self.columnconfigure(1, weight=1)
+
+        # # Loop over the supplied fields and create widgets.
+        # for key, field in fields.items():
+        #     stringvar = self.stringvars[key]
+        #     label, entry, button = field.create_widgets(self, stringvar)
+        #     label.grid(column=0, row=row, sticky='w')
+        #     entry.grid(column=1, row=row, sticky='ew')
+        #     if button is not None:
+        #         button.grid(column=2, row=row, sticky='ew')
+        #     row += 1
 
 
         # Set styles.
         style = ttk.Style(self)
+
+    def submit(self):
+        result = {x: y.get() for x, y in self.stringvars.items()}
+        # Validate
+        self.result = result
+        self.destroy()
 
     def cancel(self):
         self.result = None
@@ -340,6 +409,7 @@ if __name__ == '__main__':
 
     # stylename_elements_options('my.TEntry')
     # exit()
+    from secrets import token_hex
     app = tk.Tk()
     ttk.Entry(app).grid(column=0, row=0)
     app.withdraw()
@@ -350,8 +420,27 @@ if __name__ == '__main__':
         fields={
             'username': Field(
                 name='Username',
-                button_data=('Click Me!', lambda x: print(x.get())),
+                button_data=ButtonData(
+                    text='Click Me!',
+                    command= lambda e, v: print(f'Username: {v.get()}'),
+                ),
             ),
+            'email': Field(
+                name='Email',
+                button_data=ButtonData(
+                    text='Click Me!',
+                    command= lambda e, v: print(f'Email: {v.get()}'),
+                ),
+            ),
+            'hex': Field(
+                name='Hex',
+                read_only=True,
+                button_data=ButtonData(
+                    text='Generate',
+                    command=lambda e, v: v.set(token_hex(16)),
+                ),
+            ),
+            'password': PasswordField(),
         }
     )
     app.wait_window(dialog)
