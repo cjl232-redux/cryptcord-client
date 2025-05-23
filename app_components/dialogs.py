@@ -1,317 +1,277 @@
 import os
-import tkinter as tk
+from dataclasses import dataclass
+from sqlite3 import Connection
+from typing import Callable
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
-from tkinter import filedialog, messagebox, ttk
+import tkinter as tk
+from tkinter import messagebox, ttk
+from app_components import fields
 
-# TODO: Unlike the below, actually todo - enforce ed25519 on key load
+#TODO URGENT: derive KeyLoadField from FileSelectField
+# Add the validation and render it as Base64
+# ALSO: password dialog for importing key from file
 
-# TODO: rework validation. Should be done on clicking submit for encrypted
-# and put up a message if failed. Alternatively: just go through to the password entry?
-# Sadly, I think that's smarter... I'll implement this soon
-# Although... now that I'm thinking this through, maybe I should genuinely
-# Keep the current approach on each startup?
-# Yeah, I'm happier with that. Maybe just make it conditional on whether there's
-# An existing filepath, the label, that is. More detailed description if there's no (valid) key path in the settings
-# That lets me keep this thing I'm fond of, as long as I change the validation.
+@dataclass
+class DescriptionData:
+    text: str
+    wrap_length: int | None = None
 
-class _SignatureKeyEntryFrame(ttk.Frame):
-    def __init__(self, master, *args, **kwargs):
-        super().__init__(master, *args, **kwargs)
-        self.file_path_header_label = ttk.Label(
-            master=self,
-            text='File Path:',
-        )
-        self.file_path_header_label.grid(
-            column=0,
-            row=0,
-            sticky='w',
-            padx=(0, 5),
-        )
-        self.file_path_content_label = ttk.Label(
+type Validator = Callable[[dict[str, str]], str | None]
+
+class Dialog(tk.Toplevel):
+    def __init__(
             self,
-            text='No file selected.',
-            borderwidth=2,
-            relief='solid',
-            anchor='w',
-        )
-        self.file_path_content_label.grid(
+            master,
+            title: str,
+            description_data: DescriptionData = None,
+            fields: dict[str, fields.Field] = None,
+            validators: list[Validator] = None,
+            x_padding: int = 6,
+            y_padding: int = 2,
+            *args,
+            **kwargs,
+        ):
+        # Call the base constructor.
+        super().__init__(master, *args, **kwargs)
+
+        # Fill in default lists and dicts.
+        if fields is None:
+            fields = {}
+        if validators is None:
+            validators = []
+
+        # Grab all incoming events and set window properties.
+        self.grab_set()
+        self.title(title)
+        self.protocol('WM_DELETE_WINDOW', self.cancel)
+
+        # Track the current row.
+        row = 0
+        
+        # If provided, place the description text.
+        if description_data is not None:
+            label = ttk.Label(
+                master=self,
+                text=description_data.text,
+                wraplength=description_data.wrap_length,
+            )
+            label.grid(
+                column=0,
+                row=row,
+                columnspan=3,
+                sticky='new',
+                padx=x_padding,
+                pady=(y_padding, y_padding // 2),
+            )
+            row += 1
+        
+        # Create and place widgets for each field.
+        self.stringvars: dict[str, tk.StringVar] = {}
+        for key, field in fields.items():
+            label, entry, button, var = field.load_widgets(self)
+            label.grid(
+                column=0,
+                row=row,
+                sticky='w',
+                padx=(
+                    x_padding,
+                    x_padding // 2,
+                ),
+                pady=(
+                    y_padding if row == 0 else y_padding // 2,
+                    y_padding // 2,
+                ),
+            )
+            entry.grid(
+                column=1,
+                row=row,
+                sticky='ew',
+                padx=(
+                    x_padding // 2,
+                    x_padding // 2,
+                ),
+                pady=(
+                    y_padding if row == 0 else y_padding // 2,
+                    y_padding // 2,
+                ),
+            )
+            if button is not None:
+                button.grid(
+                    column=2,
+                    row=row,
+                    sticky='ew',
+                    padx=(
+                        x_padding // 2,
+                        x_padding,
+                    ),
+                    pady=(
+                        y_padding if row == 0 else y_padding // 2,
+                        y_padding // 2,
+                    ),
+                )
+            self.stringvars[key] = var
+            row += 1
+
+        # Add in command buttons.
+        submit_button = ttk.Button(self, text='Submit', command=self.submit)
+        submit_button.grid(
             column=1,
-            row=0,
-            sticky='nesw',
-            padx=(5, 5),
+            row=row,
+            sticky='e',
+            padx=(0, x_padding // 2),
+            pady=(y_padding if row == 0 else y_padding // 2, y_padding),
         )
-        self.browse_button = ttk.Button(self, text='Browse...')
-        self.browse_button.grid(column=2, row=0, padx=(5, 0))
-        self.invalid_file_warning = ttk.Label(
-            master=self,
-            text='The selected file is in an invalid format.',
-            foreground='red',
+        cancel_button = ttk.Button(self, text='Cancel', command=self.cancel)
+        cancel_button.grid(
+            column=2,
+            row=row,
+            sticky='ew',
+            padx=(x_padding // 2, x_padding),
+            pady=(y_padding if row == 0 else y_padding // 2, y_padding),
         )
-        self.missing_file_warning = ttk.Label(
-            master=self,
-            text='The selected file could not be found.',
-            foreground='red',
-        )
-        self.password = tk.StringVar()
-        self.password_label = ttk.Label(self, text='Password:')
-        self.password_entry = ttk.Entry(
-            master=self,
-            show='•',
-            textvariable=self.password,
-        )
-        self.show_password = tk.BooleanVar(self)
-        self.show_password_button = ttk.Button(
-            master=self,
-            text='Show/Hide',
-            command=self.toggle_password_visibility,
-        )
-        self.show_password.trace_add('write', self.update_password_visibility)
+
+        # Configure the grid.
         self.columnconfigure(1, weight=1)
 
-    def toggle_password_visibility(self):
-        self.show_password.set(not self.show_password.get())
+        # Store provided validators.
+        self.validators = validators
+        if self.validators is None:
+            self.validators = []
 
-    def update_password_visibility(self, var, index, mode):
-        if self.show_password.get():
-            self.password_entry.config(show='')
-        else:
-            self.password_entry.config(show='•')
+        # Set up key binds.
+        self.bind('<Return>', self.submit)
 
-    def show_password_entry(self):
-        self.show_password.set(False)
-        self.password_entry.delete(0, tk.END)
-        self.password_label.grid(
-            column=0,
-            row=1,
-            sticky='w',
-            padx=(0, 5),
-            pady=(10, 0),
-        )
-        self.password_entry.grid(
-            column=1,
-            row=1,
-            sticky='we',
-            padx=(5, 5),
-            pady=(10, 0),
-        )
-        self.show_password_button.grid(
-            column=2,
-            row=1,
-            sticky='w',
-            padx=(5, 0),
-            pady=(10, 0),
-        )
-    
-    def hide_password_entry(self):
-        self.password_entry.delete(0, tk.END)
-        self.password_label.grid_forget()
-        self.password_entry.grid_forget()
-        self.show_password_button.grid_forget()
-
-    def show_invalid_file_warning(self):
-        self.invalid_file_warning.grid(
-            column=0,
-            row=1,
-            columnspan=3,
-            sticky='we',
-            pady=(10, 0),
-        )
-
-    def hide_invalid_file_warning(self):
-        self.invalid_file_warning.grid_forget()
-
-    def show_missing_file_warning(self):
-        self.missing_file_warning.grid(
-            column=0,
-            row=1,
-            columnspan=3,
-            sticky='we',
-            pady=(10, 0)
-        )
-
-    def hide_missing_file_warning(self):
-        self.missing_file_warning.grid_forget()
-
-class _FooterButtonFrame(ttk.Frame):
-    def __init__(self, master, *args, **kwargs):
-        super().__init__(master, *args, **kwargs)
-        self.submit_button = ttk.Button(self, text='Submit', state='disabled')
-        self.submit_button.grid(column=1, row=0, sticky='se', padx=(0, 5))
-        self.cancel_button = ttk.Button(self, text='Cancel')
-        self.cancel_button.grid(column=2, row=0, sticky='se', padx=(5, 0))
-        self.columnconfigure(index=0, weight=1)
-
-class SignatureKeyDialog(tk.Toplevel):
-    def __init__(self, master, file_path : str = None, *args, **kwargs):
-        super().__init__(master, *args, **kwargs)
-        self.grab_set()
-        self.file_path = file_path
-        self.signature_key = None
-        self.title('Signature Key')
-        self.protocol('WM_DELETE_WINDOW', self.cancel)
-        self.intro_text = ttk.Label(
-            master=self,
-            text=(
-                'Using this program requires a private signature key. This '
-                'will allow your contacts to confirm your identity when '
-                'receiving messages and establishing shared encryption keys. '
-                'If you already have one, please select a PEM-encoded '
-                'serialialisation of the private key, providing the password '
-                'if it is encrypted. Otherwise, please generate and '
-                'serialise a key pair, provide your contacts with the public '
-                'key, then select the private key.'
-            ),
-            wraplength=600,
-        )
-        self.entry_frame = _SignatureKeyEntryFrame(self)
-        self.entry_frame.browse_button.config(command=self.browse)
-        self.footer_button_frame = _FooterButtonFrame(self)
-        self.footer_button_frame.submit_button.config(command=self.submit)
-        self.footer_button_frame.cancel_button.config(command=self.cancel)
-
-        # Arrange overall dialog layout:
-        self.intro_text.grid(
-            column=0,
-            row=0,
-            sticky='nw',
-            padx=10,
-            pady=(10, 5),
-        )
-        self.entry_frame.grid(
-            column=0,
-            row=1,
-            sticky='we',
-            padx=10,
-            pady=(5, 5),
-        )
-        self.footer_button_frame.grid(
-            column=0,
-            row=2,
-            sticky='swe',
-            padx=10,
-            pady=(5, 10),
-        )
-        self.columnconfigure(index=0, weight=1)
-        self.rowconfigure(index=2, weight=1)
-
-        # If an existing file path exists, check it.
-        if self.file_path is not None:
-            self.check_file_path()
-
-    def check_file_path(self):
-        self.entry_frame.file_path_content_label.config(text=self.file_path)
-        self.entry_frame.hide_invalid_file_warning()
-        self.entry_frame.hide_missing_file_warning()
-        self.entry_frame.hide_password_entry()
-        self.footer_button_frame.submit_button.config(state='disabled')
-        self.unbind('<Return>')
-        if os.path.exists(self.file_path):
-            try:
-                with open(self.file_path, 'rb') as file:
-                    key_data = file.read()
-                self.signature_key = load_pem_private_key(key_data, None)
-                self.footer_button_frame.submit_button.config(state='normal')
-                self.bind('<Return>', self.submit)
-            except TypeError:
-                self.entry_frame.show_password_entry()
-                self.entry_frame.password_entry.focus()
-                self.footer_button_frame.submit_button.config(state='normal')
-                self.bind('<Return>', self.submit)
-            except:
-                self.entry_frame.show_invalid_file_warning()
-        else:
-            self.entry_frame.show_missing_file_warning()
-
-    def browse(self):
-        # Adjust this to have a separate file handler that gets
-        # called on construction if settings has one. Add return bind to TypeError
-        file_path = filedialog.askopenfilename()
-        if file_path:
-            self.file_path = file_path
-            self.check_file_path()
-    
-    def submit(self, _ = None):
-        if self.file_path:
-            try:
-                password = None
-                if self.entry_frame.password_entry.get():
-                    password = self.entry_frame.password_entry.get().encode()
-                with open(self.file_path, 'rb') as file:
-                    key_data = file.read()
-                self.signature_key = load_pem_private_key(key_data, password)            
-                self.destroy()
-            except:
-                if self.entry_frame.password_entry.grid_info():
-                    messagebox.showerror(
-                        title='Incorrect Password',
-                        message='The provided password is incorrect.',
-                    )
-                    self.entry_frame.password_entry.focus()
-                    self.entry_frame.password_entry.delete(0, tk.END)
-                else:
-                    messagebox.showerror(
-                        title='Load Error',
-                        message=(
-                            'The specified key could not be loaded. This '
-                            'usually means it has been moved, deleted, or '
-                            'modified on disk.'
-                        ),
-                    )
-        else:
+    def submit(self, *_) -> bool:
+        result = {x: y.get() for x, y in self.stringvars.items()}
+        errors: list[str] = []
+        for validator in self.validators:
+            message = validator(result)
+            if message:
+                errors.append(f'• {message}')
+        if errors:
             messagebox.showerror(
-                title='Missing File Path',
-                message='No file path has been provided.',
+                title='Validation Error',
+                message=f'The following errors occured:\n{'\n'.join(errors)}',
             )
+            self.result = None
+        else:
+            self.result = result
+            self.destroy()
 
-    def cancel(self):
-        self.file_path = None
-        self.signature_key = None
+    def cancel(self, *_):
+        self.result = None
         self.destroy()
 
-class PasswordEntryDialog(tk.Toplevel):
-    def __init__(self, master, *args, **kwargs):
-        super().__init__(master, *args, **kwargs)
-        self.private_key = None
-        self.title('Signature Key Password')
-        self.label = ttk.Label(
-            master=self,
-            text='Please enter the password to decrypt your signature key.',
+class AddContactDialog(Dialog):
+    def __init__(self, master, db_connection: Connection, *args, **kwargs):
+        super().__init__(
+            master=master,
+            title='Add Contact',
+            description_data=self._description_data,
+            fields=self._fields,
+            validators=[
+                AddContactDialog._validate_name,
+                AddContactDialog._validate_public_key,
+            ]
+            *args,
+            **kwargs,
         )
-        self.label.grid(column=0, row=0, columnspan=2)
-        self.password_entry = ttk.Entry(self, show='•')
-        self.password_entry.grid(column=0, row=1, sticky='ew')
-        self.show_password = tk.BooleanVar(self)
-        self.show_password_button = ttk.Button(
-            master=self,
-            text='Show/Hide',
-            command=self.toggle_password_visibility,
-        )
-        self.show_password_button.grid(column=1, row=1)
-        self.submit_button = ttk.Button(
-            master=self,
-            text='Submit',
-            command=self.submit,
-        )
-        self.submit_button.grid(column=0, row=2, sticky='e')
-        self.cancel_button = ttk.Button(
-            master=self,
-            text='Cancel',
-            command=self.cancel,
-        )
-        self.cancel_button.grid(column=1, row=2)
-        self.columnconfigure(0, weight=1)
-        self.protocol('WM_DELETE_WINDOW', self.cancel)
+        self.db_connection = db_connection
 
-    def toggle_password_visibility(self):
-        self.show_password.set(not self.show_password.get())
-        if self.show_password.get():
-            self.password_entry.config(show='')
-        else:
-            self.password_entry.config(show='•')
+    _description_text = (
+        'Specify a unique name and a Base64 representation of a 32-byte '
+        'Ed25519 public key for this contact. The public key can be loaded '
+        'from a PEM-encoded serialisation.'
+    )
+    _description_data = DescriptionData(
+        text=_description_text,
+        wrap_length=480,
+    )
+    _fields = {
+        'name': fields.Field(name='Field'),
+        'public_key': fields.FilePathField(name='Public Key'),
+    }
 
-    def submit(self):
+    def _validate_name(values: dict[str, str]) -> str | None:
         pass
 
-    def cancel(self):
-        self.private_key = None
-        self.destroy()
+    def _validate_public_key(values: dict[str, str]) -> str | None:
+        pass
+
+class SignatureKeyDialog(Dialog):
+    def __init__(self, master, file_path: str = None, *args, **kwargs):
+        super().__init__(
+            master=master,
+            title='Signature Key',
+            description_data=self._description_data,
+            fields = self._fields,
+            validators=[SignatureKeyDialog._validate],
+            *args,
+            **kwargs,
+        )
+        if file_path:
+            self.stringvars['path'].set(file_path)
+
+    def submit(self, *_):
+        super().submit(*_)
+        if self.result:
+            with open(self.result['path'], 'rb') as file:
+                data = file.read()
+            if self.result['password']:
+                password: bytes = self.result['password'].encode()
+            else:
+                password = None
+            self.result['private_key'] = load_pem_private_key(data, password)
+        else:
+            self.stringvars['password'].set('')
+        
+
+    _description_text = (
+        'Using this program requires an Ed25519 private signature key. This '
+        'will allow your contacts to confirm the authenticity of messages '
+        'and shared encryption key exchange requests. If you already have '
+        'one, please select a file containing a PEM-encoded serialisation '
+        'of the private key, and provide a password if the file is encrypted. '
+        'Otherwise, please generate and serialise a key pair.'
+    )
+    _description_data = DescriptionData(_description_text, 480)
+    _fields = {
+        'path': fields.FilePathField(
+            name='Private Key Path',
+        ),
+        'password': fields.PasswordField(),
+    }
+
+    def _validate(values: dict[str, str]) -> str | None:
+        path = values.get('path', '')
+        if not path:
+            return 'A file path must be provided.'
+        elif not os.path.exists(path):
+            return 'The chosen file does not exist.'
+        try:
+            with open(path, 'rb') as file:
+                data = file.read()
+            password = None
+            try:
+                key = load_pem_private_key(data, password)
+            except ValueError:
+                return (
+                    'The chosen file\'s content is invalid for a '
+                    'PEM-encoded private key.'
+                )
+            except TypeError:
+                password = values.get('password', '').encode()
+                if not password:
+                    return 'The chosen file requires a password.'
+                key = load_pem_private_key(data, password)
+            if not isinstance(key, Ed25519PrivateKey):
+                return (
+                    'The chosen file\'s content represents a non-Ed25519 '
+                    'private key.'
+                )
+        except OSError:
+            return 'The chosen file could not be opened.'
+        except ValueError:
+            return 'The password provided is incorrect for the chosen file.'

@@ -5,6 +5,7 @@ import tkinter.messagebox as messagebox
 import yaml
 
 from app_components.body import Body
+#from app_components._dialogs import SignatureKeyDialog
 from app_components.dialogs import SignatureKeyDialog
 import database_functions
 
@@ -50,7 +51,7 @@ class Application(tk.Tk):
             self.destroy()
             return
         # TODO review error handling
-        # TODO encryption
+        # TODO encryption of database according to private key
 
         # Ensure the database has the required tables.
         database_functions.create_tables(self.db_connection)
@@ -61,7 +62,7 @@ class Application(tk.Tk):
             file_path=settings.get('signature_key_path', None),
         )
         self.wait_window(signature_key_dialog)
-        self.signature_key = signature_key_dialog.signature_key
+        self.signature_key = signature_key_dialog.result['private_key']
 
         # Halt initialisation and close the application if no key is loaded.
         if self.signature_key is None:
@@ -69,7 +70,7 @@ class Application(tk.Tk):
             return
         
         # Add the path of the loaded signature key to settings.
-        settings['signature_key_path'] = signature_key_dialog.file_path
+        settings['signature_key_path'] = signature_key_dialog.result['path']
 
         # Save any changes to settings.
         with open(SETTINGS_FILE_PATH, 'w') as file:
