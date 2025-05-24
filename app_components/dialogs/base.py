@@ -1,11 +1,10 @@
 import tkinter as tk
 
 from dataclasses import dataclass
-from sqlite3 import Connection
 from tkinter import messagebox, ttk
 from typing import Callable
 
-from app_components import fields
+from app_components.dialogs import fields
 
 @dataclass
 class DescriptionData:
