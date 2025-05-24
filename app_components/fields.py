@@ -2,11 +2,12 @@ from dataclasses import dataclass
 from typing import Callable
 import tkinter as tk
 from tkinter import filedialog, ttk
+from app_components import dialogs
 
 @dataclass
 class ButtonData:
     text: str
-    command: Callable[[ttk.Entry, ttk.Button, tk.StringVar], None]
+    command: Callable[['Field', ttk.Entry, tk.StringVar], None]
 
 
 class Field:
@@ -32,11 +33,14 @@ class Field:
         if self.read_only:
             entry.config(state='disabled')
         if self.button_data is not None:
+            command = self.button_data.command
+            bound_command = lambda x=self, y=entry, z=var: command(x, y, z)
             button = ttk.Button(
                 master=dialog,
                 text=self.button_data.text,
-                command=lambda x=entry, y=var: self.button_data.command(x, y)
+                command=bound_command,
             )
+            button.bind('<Return>', lambda _: bound_command())
         else:
             button = None
         return label, entry, button, var

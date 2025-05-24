@@ -12,6 +12,7 @@ from app_components import fields
 #TODO URGENT: derive KeyLoadField from FileSelectField
 # Add the validation and render it as Base64
 # ALSO: password dialog for importing key from file
+# Consider how to deal with this with a saved path. Most likely: immediately activate extra dialog.
 
 @dataclass
 class DescriptionData:
@@ -68,9 +69,14 @@ class Dialog(tk.Toplevel):
             row += 1
         
         # Create and place widgets for each field.
+        first_field = True
         self.stringvars: dict[str, tk.StringVar] = {}
         for key, field in fields.items():
             label, entry, button, var = field.load_widgets(self)
+            entry.bind('<Return>', lambda _: self.submit())
+            if first_field:
+                entry.focus()
+                first_field = False
             label.grid(
                 column=0,
                 row=row,
@@ -123,6 +129,7 @@ class Dialog(tk.Toplevel):
             padx=(0, x_padding // 2),
             pady=(y_padding if row == 0 else y_padding // 2, y_padding),
         )
+        submit_button.bind('<Return>', lambda _: self.submit())
         cancel_button = ttk.Button(self, text='Cancel', command=self.cancel)
         cancel_button.grid(
             column=2,
@@ -131,6 +138,7 @@ class Dialog(tk.Toplevel):
             padx=(x_padding // 2, x_padding),
             pady=(y_padding if row == 0 else y_padding // 2, y_padding),
         )
+        cancel_button.bind('<Return>', lambda _: self.cancel())
 
         # Configure the grid.
         self.columnconfigure(1, weight=1)
@@ -139,9 +147,6 @@ class Dialog(tk.Toplevel):
         self.validators = validators
         if self.validators is None:
             self.validators = []
-
-        # Set up key binds.
-        self.bind('<Return>', self.submit)
 
     def submit(self, *_) -> bool:
         result = {x: y.get() for x, y in self.stringvars.items()}
@@ -200,78 +205,78 @@ class AddContactDialog(Dialog):
     def _validate_public_key(values: dict[str, str]) -> str | None:
         pass
 
-class SignatureKeyDialog(Dialog):
-    def __init__(self, master, file_path: str = None, *args, **kwargs):
-        super().__init__(
-            master=master,
-            title='Signature Key',
-            description_data=self._description_data,
-            fields = self._fields,
-            validators=[SignatureKeyDialog._validate],
-            *args,
-            **kwargs,
-        )
-        if file_path:
-            self.stringvars['path'].set(file_path)
+# class SignatureKeyDialog(Dialog):
+    # def __init__(self, master, file_path: str = None, *args, **kwargs):
+    #     super().__init__(
+    #         master=master,
+    #         title='Signature Key',
+    #         description_data=self._description_data,
+    #         fields = self._fields,
+    #         validators=[SignatureKeyDialog._validate],
+    #         *args,
+    #         **kwargs,
+    #     )
+    #     if file_path:
+    #         self.stringvars['path'].set(file_path)
 
-    def submit(self, *_):
-        super().submit(*_)
-        if self.result:
-            with open(self.result['path'], 'rb') as file:
-                data = file.read()
-            if self.result['password']:
-                password: bytes = self.result['password'].encode()
-            else:
-                password = None
-            self.result['private_key'] = load_pem_private_key(data, password)
-        else:
-            self.stringvars['password'].set('')
+    # def submit(self, *_):
+    #     super().submit(*_)
+    #     if self.result:
+    #         with open(self.result['path'], 'rb') as file:
+    #             data = file.read()
+    #         if self.result['password']:
+    #             password: bytes = self.result['password'].encode()
+    #         else:
+    #             password = None
+    #         self.result['private_key'] = load_pem_private_key(data, password)
+    #     else:
+    #         self.stringvars['password'].set('')
         
 
-    _description_text = (
-        'Using this program requires an Ed25519 private signature key. This '
-        'will allow your contacts to confirm the authenticity of messages '
-        'and shared encryption key exchange requests. If you already have '
-        'one, please select a file containing a PEM-encoded serialisation '
-        'of the private key, and provide a password if the file is encrypted. '
-        'Otherwise, please generate and serialise a key pair.'
-    )
-    _description_data = DescriptionData(_description_text, 480)
-    _fields = {
-        'path': fields.FilePathField(
-            name='Private Key Path',
-        ),
-        'password': fields.PasswordField(),
-    }
+    # _description_text = (
+    #     'Using this program requires an Ed25519 private signature key. This '
+    #     'will allow your contacts to confirm the authenticity of messages '
+    #     'and shared encryption key exchange requests. If you already have '
+    #     'one, please select a file containing a PEM-encoded serialisation '
+    #     'of the private key, and provide a password if the file is encrypted. '
+    #     'Otherwise, please generate and serialise a key pair.'
+    # )
+    # _description_data = DescriptionData(_description_text, 480)
+    # _fields = {
+    #     'path': fields.FilePathField(
+    #         name='Private Key Path',
+    #     ),
+    #     'password': fields.PasswordField(),
+    # }
 
-    def _validate(values: dict[str, str]) -> str | None:
-        path = values.get('path', '')
-        if not path:
-            return 'A file path must be provided.'
-        elif not os.path.exists(path):
-            return 'The chosen file does not exist.'
-        try:
-            with open(path, 'rb') as file:
-                data = file.read()
-            password = None
-            try:
-                key = load_pem_private_key(data, password)
-            except ValueError:
-                return (
-                    'The chosen file\'s content is invalid for a '
-                    'PEM-encoded private key.'
-                )
-            except TypeError:
-                password = values.get('password', '').encode()
-                if not password:
-                    return 'The chosen file requires a password.'
-                key = load_pem_private_key(data, password)
-            if not isinstance(key, Ed25519PrivateKey):
-                return (
-                    'The chosen file\'s content represents a non-Ed25519 '
-                    'private key.'
-                )
-        except OSError:
-            return 'The chosen file could not be opened.'
-        except ValueError:
-            return 'The password provided is incorrect for the chosen file.'
+    # def _validate(values: dict[str, str]) -> str | None:
+    #     path = values.get('path', '')
+    #     if not path:
+    #         return 'A file path must be provided.'
+    #     elif not os.path.exists(path):
+    #         return 'The chosen file does not exist.'
+    #     try:
+    #         with open(path, 'rb') as file:
+    #             data = file.read()
+    #         password = None
+    #         try:
+    #             key = load_pem_private_key(data, password)
+    #         except ValueError:
+    #             return (
+    #                 'The chosen file\'s content is invalid for a '
+    #                 'PEM-encoded private key.'
+    #             )
+    #         except TypeError:
+    #             password = values.get('password', '').encode()
+    #             if not password:
+    #                 return 'The chosen file requires a password.'
+    #             key = load_pem_private_key(data, password)
+    #         if not isinstance(key, Ed25519PrivateKey):
+    #             return (
+    #                 'The chosen file\'s content represents a non-Ed25519 '
+    #                 'private key.'
+    #             )
+    #     except OSError:
+    #         return 'The chosen file could not be opened.'
+    #     except ValueError:
+    #         return 'The password provided is incorrect for the chosen file.'

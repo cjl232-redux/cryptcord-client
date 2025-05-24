@@ -51,3 +51,16 @@ def add_contact(conn: sqlite3.Connection, name: str, key: str):
 def delete_contact(conn: sqlite3.Connection, id: int):
     with closing(conn.cursor()) as cursor:
         cursor.execute('DELETE FROM contacts WHERE id = ?', (id,))
+
+def contact_name_exists(conn: sqlite3.Connection, name: str) -> bool:
+    with closing(conn.cursor()) as cursor:
+        cursor.execute('SELECT id FROM contacts WHERE name = ?', (name,))
+        return cursor.fetchone()
+
+def contact_key_exists(conn: sqlite3.Connection, key: str) -> bool:
+    with closing(conn.cursor()) as cursor:
+        cursor.execute(
+            'SELECT id FROM contacts WHERE ed25519_public_key = ?',
+            (key,),
+        )
+        return cursor.fetchone()
