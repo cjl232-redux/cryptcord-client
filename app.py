@@ -1,12 +1,17 @@
 import os
 import sqlite3
 import tkinter as tk
-import tkinter.messagebox as messagebox
+
+from base64 import b64decode
+from tkinter import messagebox
+
 import yaml
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app_components.body import Body
 #from app_components._dialogs import SignatureKeyDialog
-from app_components.dialogs import SignatureKeyDialog
+from app_components.dialogs.private_key_dialogs import SignatureKeyDialog
 import database_functions
 
 # So now I have two major dialogs, and they're fundamentally different in appearance.
@@ -57,20 +62,18 @@ class Application(tk.Tk):
         database_functions.create_tables(self.db_connection)
 
         # Load the user's signature key via a custom dialog.
-        signature_key_dialog = SignatureKeyDialog(
-            master=self,
-            file_path=settings.get('signature_key_path', None),
-        )
+        signature_key_dialog = SignatureKeyDialog(self)
         self.wait_window(signature_key_dialog)
-        self.signature_key = signature_key_dialog.result['private_key']
 
         # Halt initialisation and close the application if no key is loaded.
-        if self.signature_key is None:
+        if signature_key_dialog.result is None:
             self.destroy()
             return
         
-        # Add the path of the loaded signature key to settings.
-        settings['signature_key_path'] = signature_key_dialog.result['path']
+        # Otherwise, initialise a key object from the dialog.
+        self.signature_key = Ed25519PrivateKey.from_private_bytes(
+            data=b64decode(signature_key_dialog.result['signature_key']),
+        )
 
         # Save any changes to settings.
         with open(SETTINGS_FILE_PATH, 'w') as file:

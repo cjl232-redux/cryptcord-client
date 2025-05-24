@@ -16,12 +16,14 @@ class Field:
             name: str,
             default: str = None,
             read_only: bool = False,
-            button_data: ButtonData = None,            
+            button_data: ButtonData = None,
+            hide_input: bool = False,
         ):
         self.name = name
         self.default = default
         self.read_only = read_only
         self.button_data = button_data
+        self.hide_input = hide_input
 
     def load_widgets(
             self,
@@ -32,6 +34,8 @@ class Field:
         entry = ttk.Entry(dialog, textvariable=var)
         if self.read_only:
             entry.config(state='disabled')
+        if self.hide_input:
+            entry.config(show='●')
         if self.button_data is not None:
             command = self.button_data.command
             bound_command = lambda x=self, y=entry, z=var: command(x, y, z)
@@ -50,17 +54,10 @@ class PasswordField(Field):
         super().__init__(
             name=name,
             button_data=self._button_data,
+            hide_input=True,
             *args,
             **kwargs,
         )
-    
-    def load_widgets(
-            self,
-            dialog,
-        ) -> tuple[ttk.Label, ttk.Entry, ttk.Button | None, tk.StringVar]:
-        label, entry, button, var = super().load_widgets(dialog)
-        entry.config(show='●')
-        return label, entry, button, var
 
     def _toggle_visibility(entry: ttk.Entry, _: tk.StringVar):
         entry.config(show='●' if entry.cget('show') == '' else '')
