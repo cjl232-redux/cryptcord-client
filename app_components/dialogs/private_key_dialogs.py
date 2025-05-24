@@ -6,7 +6,7 @@ from tkinter import filedialog, messagebox, ttk
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
-from app_components.dialogs.base import DescriptionData, Dialog
+from app_components.dialogs.base_dialogs import DescriptionData, Dialog
 from app_components.dialogs.fields import ButtonData, Field, PasswordField
 
 class KeyPasswordDialog(Dialog):

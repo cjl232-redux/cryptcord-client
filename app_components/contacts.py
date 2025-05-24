@@ -65,6 +65,7 @@ class ExistingContactsFrame(VerticalScrollableFrame):
                 self.load_contacts()
                 
 
+# Need to remake this. Rely on pulling database from top level.
 class ContactsPane(ttk.Frame):
     def __init__(self, master, client_db: sqlite3.Connection, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
