@@ -1,10 +1,15 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 
-class VerticalScrollableFrame(ttk.Frame):
+# Definitely room to streamline this...
+
+class VerticalFrame(ttk.Frame):
     def __init__(self, master, scroll_speed: int = 2, *args, **kwargs):
         # Call the base constructor.
         super().__init__(master, *args, **kwargs)
+
+        # Store values.
+        self.scroll_speed = scroll_speed
 
         # Create and place the canvas and scrollbar.
         self.canvas = tk.Canvas(self)
@@ -24,21 +29,72 @@ class VerticalScrollableFrame(ttk.Frame):
         self.window = self.canvas.create_window(0, 0, window=self.interior, anchor='nw')
 
         # Define and assign callbacks.
-        # def _on_configure_canvas(event):
-        #     self.canvas.itemconfig(self.window, width=event.width)
-        # self.canvas.bind('<Configure>', _on_configure_canvas)
-            
+        def _on_configure_canvas(event):
+            self.canvas.itemconfig(self.window, width=event.width)
+        self.canvas.bind('<Configure>', _on_configure_canvas)
         def _on_configure_interior(_):
             self.canvas.configure(scrollregion=self.canvas.bbox('all'))
         self.interior.bind('<Configure>', _on_configure_interior)
 
-        # Define and assign a callback for scrolling with the mouse wheel.
-        def _on_mousewheel(event):
-            if event.delta <= 0:
-                self.canvas.yview_scroll(scroll_speed, 'units')
-            else:
-                self.canvas.yview_scroll(-scroll_speed, 'units')
-        self.canvas.bind('<MouseWheel>', _on_mousewheel)
+        # Bind and unbind a mousewheel callback based on the cursor position.
+        self.canvas.bind('<Enter>', self._bind_mousewheel)
+        self.canvas.bind('<Leave>', self._unbind_mousewheel)
+        
+    def _on_mousewheel(self, event):
+        if event.delta <= 0:
+            self.canvas.yview_scroll(self.scroll_speed, 'units')
+        else:
+            self.canvas.yview_scroll(-self.scroll_speed, 'units')
+
+    def _bind_mousewheel(self, *_):
+        self.winfo_toplevel().unbind('<MouseWheel>')
+        self.winfo_toplevel().bind('<MouseWheel>', self._on_mousewheel)
+    def _unbind_mousewheel(self, *_):
+        self.winfo_toplevel().unbind('<MouseWheel>')
+
+
+class VerticalText(ttk.Frame):
+    def __init__(
+            self,
+            master,
+            scroll_speed: int = 2,
+            text_height: int = 24,
+            *args,
+            **kwargs,
+        ):
+        # Store values.
+        self.scroll_speed = scroll_speed
+
+        # Call the base constructor.
+        super().__init__(master, *args, **kwargs)
+
+        # Create and place the canvas and scrollbar.
+        self.text = tk.Text(self, height=text_height)
+        self.text.grid(column=0, row=0, sticky='nsew')
+        self.scrollbar = ttk.Scrollbar(
+            master=self,
+            orient='vertical',
+            command=self.text.yview,
+        )
+        self.scrollbar.grid(column=1, row=0, sticky='ns')
+        self.text.configure(yscrollcommand=self.scrollbar.set)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        # Bind and unbind a mousewheel callback based on the cursor position.
+        self.text.bind('<Enter>', self._bind_mousewheel)
+        self.text.bind('<Leave>', self._unbind_mousewheel)
+        
+    def _on_mousewheel(self, event):
+        if event.delta <= 0:
+            self.text.yview_scroll(self.scroll_speed, 'units')
+        else:
+            self.text.yview_scroll(-self.scroll_speed, 'units')
+
+    def _bind_mousewheel(self, *_):
+        self.winfo_toplevel().bind('<MouseWheel>', self._on_mousewheel)
+    def _unbind_mousewheel(self, *_):
+        self.winfo_toplevel().unbind('<MouseWheel>')
 
 
 if __name__ == '__main__':
@@ -46,7 +102,7 @@ if __name__ == '__main__':
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
 
-            self.frame = VerticalScrollableFrame(self)
+            self.frame = VerticalFrame(self)
             self.frame.grid(column=0, row=0, sticky='nsew')
             self.label = ttk.Label(self, text="Shrink the window to activate the scrollbar.")
             self.button = ttk.Button(self, text='add', command=self.add_buttons)

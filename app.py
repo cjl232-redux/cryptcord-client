@@ -84,7 +84,6 @@ class Application(tk.Tk):
         self.body = Body(
             master=self,
             public_key=self.signature_key.public_key(),
-            client_db=self.db_connection,
         )
         self.body.grid(column=0, row=0, sticky='nsew', padx=5, pady=5)
         self.grid_columnconfigure(0, weight=1)

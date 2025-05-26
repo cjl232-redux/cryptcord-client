@@ -4,10 +4,11 @@ from contextlib import closing
 from tkinter import messagebox, ttk
 
 from app_components.dialogs.contact_dialogs import AddContactDialog
-from app_components.scrollable_frames import VerticalScrollableFrame
+from app_components.messages import MessageWindow
+from app_components.scrollable_frames import VerticalFrame
 from database_functions import add_contact
 
-class ExistingContactsFrame(VerticalScrollableFrame):
+class ExistingContactsFrame(VerticalFrame):
     def __init__(self, master, client_db: sqlite3.Connection, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
         self.name_labels: list[ttk.Label] = []
@@ -40,13 +41,23 @@ class ExistingContactsFrame(VerticalScrollableFrame):
             for i, contact in enumerate(cursor.fetchall()):
                 label = ttk.Label(self.interior, text=contact[1])
                 label.grid(column=0, row=i, sticky='w', pady=(0, 5,))
+                message_button = ttk.Button(
+                    master=self.interior,
+                    text='Message',
+                    command=lambda id=contact[0]: self.open_messages(id),
+                )
+                message_button.grid(column=1, row=i, pady=(0, 5,))
                 remove_button = ttk.Button(
                     master=self.interior,
                     text='Remove',
                     command=lambda id=contact[0]: self.remove_contact(id),
                 )
-                remove_button.grid(column=1, row=i, pady=(0, 5,))
+                remove_button.grid(column=2, row=i, pady=(0, 5,))
             self.interior.columnconfigure(0, weight=1)
+
+    def open_messages(self, id: int):
+        local_database = self.winfo_toplevel().db_connection
+        MessageWindow(self.winfo_toplevel(), id, local_database)
 
     def remove_contact(self, id: int):
         db_connection = self.winfo_toplevel().db_connection
@@ -66,10 +77,21 @@ class ExistingContactsFrame(VerticalScrollableFrame):
                 
 
 # Need to remake this. Rely on pulling database from top level.
-class ContactsPane(ttk.Frame):
-    def __init__(self, master, client_db: sqlite3.Connection, *args, **kwargs):
+class _ContactsPane(ttk.Frame):
+    def __init__(self, master, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
-        self.client_db = client_db
+        self.message_windows: dict[int, MessageWindow] = {}
+        self.after(1000, self.update)
+
+    def update(self):
+        self.message_windows[len(self.message_windows)] = MessageWindow(self, None, None)
+        self.after(1000, self.update)
+
+
+class ContactsPane(ttk.Frame):
+    def __init__(self, master, *args, **kwargs):
+        super().__init__(master, *args, **kwargs)
+        self.client_db = self.winfo_toplevel().db_connection
         self.add_button = ttk.Button(
             master=self,
             text='Add Contact',

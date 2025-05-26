@@ -1,5 +1,3 @@
-import sqlite3
-
 from base64 import b64encode
 from tkinter import ttk
 
@@ -14,7 +12,6 @@ class Body(ttk.Frame):
             self,
             master,
             public_key: Ed25519PublicKey,
-            client_db: sqlite3.Connection,
             *args,
             **kwargs,
         ):
@@ -22,7 +19,7 @@ class Body(ttk.Frame):
 
         # Dedicate the main part of the body to a notebook.
         self.notebook = ttk.Notebook(self)
-        self.notebook.add(child=ContactsPane(self, client_db), text='Contacts')
+        self.notebook.add(child=ContactsPane(self), text='Contacts')
         self.notebook.grid(
             column=0,
             row=0,
