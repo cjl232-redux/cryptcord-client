@@ -9,13 +9,12 @@ import yaml
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from app_components.body import Body
-#from app_components._dialogs import SignatureKeyDialog
-from app_components.dialogs.private_key_dialogs import SignatureKeyDialog
 import database_functions
 
-# So now I have two major dialogs, and they're fundamentally different in appearance.
-# I need to find a way to standardise them.
+from app_components.body import Body
+from app_components.dialogs.private_key_dialogs import SignatureKeyDialog
+from app_components.dialogs.server_dialogs import ServerDialog
+from app_components.server_connections import ServerContext
 
 SETTINGS_FILE_PATH = 'settings.yaml'
 
@@ -74,6 +73,34 @@ class Application(tk.Tk):
         self.signature_key = Ed25519PrivateKey.from_private_bytes(
             data=b64decode(signature_key_dialog.result['signature_key']),
         )
+
+        # Get the server information with a dialog.
+        server_dialog = ServerDialog(self, title='Server Connection')
+        self.wait_window(server_dialog)
+
+        # Halt initialisation and close the application on a cancel.
+        if server_dialog.result is None:
+            self.destroy()
+            return
+        
+        # Otherwise, initialise the server context.
+        self.server_context = ServerContext(
+            host=server_dialog.result['ip_address'],
+            port=int(server_dialog.result['port_number']),
+            signature_key=self.signature_key,
+        )
+
+        # Test
+        from base64 import b64encode
+        data = {
+            'command': 'SEND_MESSAGE',
+            'recipient_public_key': 'rwaj4ykXFOTzVsGcmxXNGVHsbmZiqne+B1R/KJODNB0=',
+            'encrypted_message': 'Main app calling Kirby.',
+            'signature': b64encode(self.signature_key.sign('Main app calling Kirby.'.encode())).decode(),
+        }
+        response = self.server_context.send_request(data)
+        print(response)
+
 
         # Save any changes to settings.
         with open(SETTINGS_FILE_PATH, 'w') as file:

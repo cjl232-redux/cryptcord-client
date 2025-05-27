@@ -6,25 +6,16 @@ import sqlite3
 
 from asyncio import StreamReader, StreamWriter
 from base64 import b64decode
-from typing import Callable
+from secrets import randbits
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+import server.database_functions
+import server.exceptions
 import server.handling
 
-from json_types import JSONType
-from server.database import create_tables
-
-
-type _JSONDict = dict[str, JSONType]
-type _HandlerDict = dict[str, Callable[[_JSONDict], _JSONDict]]
-
-_handlers: _HandlerDict = {
-
-}
-
-_required_parameters: list[tuple[str, type]] = [
+_REQUIRED_PARAMETERS: list[tuple[str, type]] = [
     ('data', dict),
     ('signature', str),
     ('public_key', str),
@@ -40,10 +31,10 @@ _MalformationExceptions = (
     binascii.Error,
     json.JSONDecodeError,
     MalformedRequestError,
-    server.handling.MalformedDataError,
+    server.exceptions.MalformedDataError,
 )
 
-class ServerContext:
+class ServerBase:
     def __init__(
             self,
             db_name: str,
@@ -59,7 +50,7 @@ class ServerContext:
 
         # Ensure that the database is set up.
         with sqlite3.connect(db_name) as conn:
-            create_tables(conn)
+            server.database_functions.create_tables(conn)
         
         # Prepare a variable to hold an asynchronous connection.
         self.db_connection = None
@@ -99,7 +90,7 @@ class ServerContext:
             # Validate the overall structure of the request.
             if not isinstance(request, dict):
                 raise MalformedRequestError()
-            for name, type in _required_parameters:
+            for name, type in _REQUIRED_PARAMETERS:
                 if name not in request:
                     raise MalformedRequestError()
                 elif not isinstance(request[name], type):
@@ -116,7 +107,7 @@ class ServerContext:
 
             # Pass the request data to the handling logic.
             response = await server.handling.handle_data(
-                db_connection=self.db_connection,
+                conn=self.db_connection,
                 data=data,
                 public_key=request['public_key'],
             )
@@ -146,6 +137,9 @@ class ServerContext:
                 'message': str(e),
             }
 
+        # Attach a 32-byte nonce to the response.
+        #response['nonce'] = randbits(256)
+
         # Send the response to the client.
         writer.write(json.dumps(response).encode())
         await writer.drain()
@@ -156,5 +150,5 @@ class ServerContext:
 
 
 if __name__ == '__main__':
-    server_context = ServerContext('server/server_database.db')
-    asyncio.run(server_context.main())
+    server_base = ServerBase('server/server_database.db')
+    asyncio.run(server_base.main())

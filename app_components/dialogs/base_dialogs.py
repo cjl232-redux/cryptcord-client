@@ -38,7 +38,7 @@ class Dialog(tk.Toplevel):
         # Grab all incoming events and set window properties.
         self.grab_set()
         self.title(title)
-        self.protocol('WM_DELETE_WINDOW', self.cancel)
+        self.protocol('WM_DELETE_WINDOW', self._cancel)
 
         # Track the current row.
         row = 0
@@ -65,7 +65,7 @@ class Dialog(tk.Toplevel):
         self.stringvars: dict[str, tk.StringVar] = {}
         for key, field in fields.items():
             label, entry, button, var = field.load_widgets(self)
-            entry.bind('<Return>', lambda _: self.submit())
+            entry.bind('<Return>', lambda _: self._submit())
             if first_field:
                 entry.focus()
                 first_field = False
@@ -113,7 +113,7 @@ class Dialog(tk.Toplevel):
             row += 1
 
         # Add in command buttons.
-        submit_button = ttk.Button(self, text='Submit', command=self.submit)
+        submit_button = ttk.Button(self, text='Submit', command=self._submit)
         submit_button.grid(
             column=1,
             row=row,
@@ -121,8 +121,8 @@ class Dialog(tk.Toplevel):
             padx=(0, x_padding // 2),
             pady=(y_padding if row == 0 else y_padding // 2, y_padding),
         )
-        submit_button.bind('<Return>', lambda _: self.submit())
-        cancel_button = ttk.Button(self, text='Cancel', command=self.cancel)
+        submit_button.bind('<Return>', lambda _: self._submit())
+        cancel_button = ttk.Button(self, text='Cancel', command=self._cancel)
         cancel_button.grid(
             column=2,
             row=row,
@@ -130,7 +130,7 @@ class Dialog(tk.Toplevel):
             padx=(x_padding // 2, x_padding),
             pady=(y_padding if row == 0 else y_padding // 2, y_padding),
         )
-        cancel_button.bind('<Return>', lambda _: self.cancel())
+        cancel_button.bind('<Return>', lambda _: self._cancel())
 
         # Configure the grid.
         self.columnconfigure(1, weight=1)
@@ -140,7 +140,7 @@ class Dialog(tk.Toplevel):
         if self.validators is None:
             self.validators = []
 
-    def submit(self, *_) -> bool:
+    def _submit(self, *_):
         result = {x: y.get() for x, y in self.stringvars.items()}
         errors: list[str] = []
         for validator in self.validators:
@@ -164,6 +164,6 @@ class Dialog(tk.Toplevel):
             self.result = result
             self.destroy()
 
-    def cancel(self, *_):
+    def _cancel(self, *_):
         self.result = None
         self.destroy()
