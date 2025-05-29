@@ -1,25 +1,30 @@
+import tkinter as tk
+
 from base64 import b64encode
 from tkinter import ttk
 
 import pyperclip
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from sqlalchemy import Engine
 
 from app_components.contacts import ContactsPane
 
 class Body(ttk.Frame):
     def __init__(
             self,
-            master,
-            public_key: Ed25519PublicKey,
-            *args,
-            **kwargs,
+            master: tk.Tk,
+            engine: Engine,
+            signature_key: Ed25519PrivateKey,
         ):
-        super().__init__(master, *args, **kwargs)
+        super().__init__(master)
 
         # Dedicate the main part of the body to a notebook.
         self.notebook = ttk.Notebook(self)
-        self.notebook.add(child=ContactsPane(self), text='Contacts')
+        self.notebook.add(
+            child=ContactsPane(self, engine, signature_key),
+            text='Contacts',
+        )
         self.notebook.grid(
             column=0,
             row=0,
@@ -30,13 +35,14 @@ class Body(ttk.Frame):
         )
         
         # Display the user's public key in Base64 form.
-        public_key = b64encode(public_key.public_bytes_raw()).decode()
-        label = ttk.Label(self, text=f'Your public key: {public_key}')
+        public_bytes = signature_key.public_key().public_bytes_raw()
+        public_bytes_b64 = b64encode(public_bytes).decode()
+        label = ttk.Label(self, text=f'Your public key: {public_bytes_b64}')
         label.grid(column=0, row=1, sticky='w', padx=5, pady=5)
         copy_button = ttk.Button(
             master=self,
             text='Copy',
-            command=lambda *_: pyperclip.copy(public_key),
+            command=lambda *_: pyperclip.copy(public_bytes_b64),
         )
         copy_button.grid(column=1, row=1, sticky='w', padx=5, pady=5)
 
