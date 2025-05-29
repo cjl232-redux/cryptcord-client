@@ -5,25 +5,24 @@ from sqlite3 import Connection
 from tkinter import filedialog, messagebox, ttk
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
 
 from app_components.dialogs.base_dialogs import DescriptionData, Dialog
 from app_components.dialogs.fields import ButtonData, Field
 from database_functions import contact_key_exists, contact_name_exists
 
+type AcceptableKeyType = type[Ed25519PublicKey] | type[X25519PublicKey]
+
 class PublicKeyField(Field):
     def __init__(
             self,
             name: str = 'Public Key',
-            key_type: type = None,
-            *args,
-            **kwargs,
+            key_type: AcceptableKeyType = Ed25519PublicKey,
         ):
         super().__init__(
             name=name,
             button_data=self._button_data,
-            *args,
-            **kwargs,
         )
         self.key_type = key_type
 
@@ -37,7 +36,7 @@ class PublicKeyField(Field):
             with open(path, 'rb') as file:
                 data = file.read()
             key = serialization.load_pem_public_key(data)
-            if self.key_type and not isinstance(key, self.key_type):
+            if not isinstance(key, self.key_type):
                 raise TypeError()
             variable.set(b64encode(key.public_bytes_raw()).decode())
         except ValueError:
@@ -64,11 +63,10 @@ class PublicKeyField(Field):
 class AddContactDialog(Dialog):
     def __init__(
             self,
-            master,
-            db_connection: Connection,
+            master: tk.Widget | ttk.Widget,
+            used_names: set[str],
+            used_public_keys: set[str],
             title: str = 'Add Contact',
-            *args,
-            **kwargs,
         ):
         super().__init__(
             master=master,
@@ -77,17 +75,16 @@ class AddContactDialog(Dialog):
             fields={
                 'name': Field(name='Name'),
                 'public_key': PublicKeyField(
-                    key_type=ed25519.Ed25519PublicKey,
+                    key_type=Ed25519PublicKey,
                 ),
             },
             validators=[
                 self._validate_name,
                 self._validate_key,
             ],
-            *args,
-            **kwargs,
         )
-        self.db_connection = db_connection
+        self.used_names = used_names
+        self.used_public_keys = used_public_keys
         
     _description_text = (
         'Specify a unique name and a Base64 representation of a 32-byte '
@@ -100,21 +97,20 @@ class AddContactDialog(Dialog):
         name = values.get('name', '')
         if not name:
             return 'A value is required for the name field.'
-        elif contact_name_exists(self.db_connection, name):
+        elif name in self.used_names:
             return 'The value provided for the name field is already in use.'
     
     def _validate_key(self, values: dict[str, str]) -> str | None:
         key = values.get('public_key', '')
         if not key:
             return 'A value is required for the key field.'
-        elif contact_key_exists(self.db_connection, key):
+        elif key in self.used_public_keys:
             return 'The value provided for the key field is already in use.'
         try:
-            raw_bytes = b64decode(key, validate=True)
-            if len(raw_bytes) != 32:
+            if len(b64decode(key, validate=True)) != 32:
                 raise ValueError()
         except:
             return (
-                'The value provided for the key field is not a valid Base64 '
-                'representation of a 32-byte key.'
+                'The value provided for the public key field is not a valid '
+                'Base64 representation of a 32-byte key.'
             )

@@ -1,27 +1,30 @@
 import os
-import sqlite3
+#import sqlite3
 import tkinter as tk
 
 from base64 import b64decode
 from tkinter import messagebox
+from typing import Any
 
 import yaml
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
-import database_functions
+from sqlalchemy import create_engine
 
 from app_components.body import Body
 from app_components.dialogs.private_key_dialogs import SignatureKeyDialog
 from app_components.dialogs.server_dialogs import ServerDialog
 from app_components.server_connections import ServerContext
+from database import models
 
 SETTINGS_FILE_PATH = 'settings.yaml'
 
+# Need to pass through the network connection handler too
+
 class Application(tk.Tk):
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         # Call the Tk constructor, then withdraw the main window.
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self.withdraw()
         
         # Set basic properties.
@@ -32,17 +35,20 @@ class Application(tk.Tk):
             with open(SETTINGS_FILE_PATH, mode='w'):
                 pass
         with open(SETTINGS_FILE_PATH, mode='r') as file:
-            settings = yaml.safe_load(file)
+            settings: dict[str, Any] = yaml.safe_load(file)
 
-        # Retrieve the local database path from settings, or set a default.
-        database: str = settings.get('database', 'local_database.db')
-        settings['database'] = database
+        # Retrieve the local database url from settings, or set a default.
+        database_url: str = settings.get(
+            'database_url',
+            'sqlite:///database.db',
+        )
+        settings['database_url'] = database_url
 
         try:
-            # Attempt to connect to the local database.
-            self.db_connection = sqlite3.connect(database, autocommit=True)
+            # Attempt to start the engine with the provided url.
+            self.engine = create_engine(database_url, echo=True)
         except:
-            # If an exception is raised, display an appropriate error message.
+            # If an exception is raised, terminate with a message.
             messagebox.showerror(
                 title='Invalid Database Path',
                 message=(
@@ -50,15 +56,13 @@ class Application(tk.Tk):
                     f'{SETTINGS_FILE_PATH} is invalid.'
                 ),
             )
-            # Destroy the application and terminate initialisation.
-            self.db_connection = None
             self.destroy()
             return
         # TODO review error handling
         # TODO encryption of database according to private key
 
         # Ensure the database has the required tables.
-        database_functions.create_tables(self.db_connection)
+        models.Base.metadata.create_all(self.engine)
 
         # Load the user's signature key via a custom dialog.
         signature_key_dialog = SignatureKeyDialog(self)
@@ -90,18 +94,6 @@ class Application(tk.Tk):
             signature_key=self.signature_key,
         )
 
-        # Test
-        from base64 import b64encode
-        data = {
-            'command': 'SEND_MESSAGE',
-            'recipient_public_key': 'rwaj4ykXFOTzVsGcmxXNGVHsbmZiqne+B1R/KJODNB0=',
-            'encrypted_message': 'Main app calling Kirby.',
-            'signature': b64encode(self.signature_key.sign('Main app calling Kirby.'.encode())).decode(),
-        }
-        response = self.server_context.send_request(data)
-        print(response)
-
-
         # Save any changes to settings.
         with open(SETTINGS_FILE_PATH, 'w') as file:
             yaml.safe_dump(settings, file)
@@ -110,19 +102,23 @@ class Application(tk.Tk):
         self.deiconify()
         self.body = Body(
             master=self,
-            public_key=self.signature_key.public_key(),
+            engine=self.engine,
+            signature_key=self.signature_key,
         )
         self.body.grid(column=0, row=0, sticky='nsew', padx=5, pady=5)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, *_):
-        if self.db_connection is not None:
-            self.db_connection.close()
+        # Test
+        # from base64 import b64encode
+        # data = {
+        #     'command': 'SEND_MESSAGE2',
+        #     'recipient_public_key': 'rwaj4ykXFOTzVsGcmxXNGVHsbmZiqne+B1R/KJODNB0=',
+        #     'encrypted_message': 'Main app calling Kirby.',
+        #     'signature': b64encode(self.signature_key.sign('Main app calling Kirby.'.encode())).decode(),
+        # }
+        # response = self.server_context.send_request(data)
+        # print(response)
 
 if __name__ == '__main__':
-    with Application() as application:
-        application.mainloop()
+    Application().mainloop()
