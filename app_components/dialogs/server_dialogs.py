@@ -1,28 +1,36 @@
-from ipaddress import ip_address
+import tkinter as tk
 
-from app_components.dialogs.base_dialogs import DescriptionData, Dialog
-from app_components.dialogs.fields import ButtonData, Field, PasswordField
+from ipaddress import ip_address
+from tkinter import ttk
+
+from app_components.dialogs.base import Dialog
+from app_components.dialogs.fields import Field
 
 class ServerDialog(Dialog):
-    def __init__(self, master, title: str ='Server Dialog', *args, **kwargs):
+    def __init__(
+            self,
+            master: tk.Widget | ttk.Widget | tk.Tk | tk.Toplevel,
+            title: str ='Server Connection',
+        ):
         super().__init__(
             master=master,
             title=title,
-            description_data=self.description_data,
+            description_kwargs=self._description_kwargs,
             fields={
                 'ip_address': Field(name='IP Address', default='127.0.0.1'),
-                'port_number': Field(name='Port Number', default=8888),
+                'port_number': Field(name='Port Number', default='8888'),
             },
             validators=[
                 self._validate_ip_address,
                 self._validate_port,
             ],
-            *args,
-            **kwargs,
         )
 
-    description_text = 'Provide an IP address and a port to connect to.'
-    description_data = DescriptionData(description_text, 480)
+    _description_text = 'Provide an IP address and a port to connect to.'
+    _description_kwargs: dict[str, int | str] = {
+        'text': _description_text,
+        'wraplength': 480,
+    }
 
     def _validate_ip_address(self, values: dict[str, str]) -> str | None:
         address = values.get('ip_address', '')
