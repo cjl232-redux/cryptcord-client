@@ -1,32 +1,26 @@
 import tkinter as tk
-
+# FIX REMAINING ERRORS
 from base64 import b64decode, b64encode
-from sqlite3 import Connection
 from tkinter import filedialog, messagebox, ttk
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
 
-from app_components.dialogs.base_dialogs import DescriptionData, Dialog
+from app_components.dialogs.base import Dialog
 from app_components.dialogs.fields import ButtonData, Field
-from database_functions import contact_key_exists, contact_name_exists
-
-type AcceptableKeyType = type[Ed25519PublicKey] | type[X25519PublicKey]
 
 class PublicKeyField(Field):
     def __init__(
             self,
             name: str = 'Public Key',
-            key_type: AcceptableKeyType = Ed25519PublicKey,
         ):
         super().__init__(
             name=name,
-            button_data=self._button_data,
+            button_data=ButtonData('Browse...', self._browse),
         )
-        self.key_type = key_type
 
-    def _browse(self, _: ttk.Entry, variable: tk.StringVar):
+    @staticmethod
+    def _browse(_: Field, entry: ttk.Entry, variable: tk.StringVar):
         path = filedialog.askopenfilename()
         # Exit the function if no path is provided.
         if not path:
@@ -36,9 +30,17 @@ class PublicKeyField(Field):
             with open(path, 'rb') as file:
                 data = file.read()
             key = serialization.load_pem_public_key(data)
-            if not isinstance(key, self.key_type):
-                raise TypeError()
-            variable.set(b64encode(key.public_bytes_raw()).decode())
+            if isinstance(key, Ed25519PublicKey):
+                variable.set(b64encode(key.public_bytes_raw()).decode())
+                entry.focus()
+            else:
+                messagebox.showerror(
+                    title='Invalid Key Type',
+                    message=(
+                        f'The selected file represents a {type(key).__name__} '
+                        f'object, but an Ed25519PublicKey object is required.'
+                    ),
+            )
         except ValueError:
             messagebox.showerror(
                 title='Invalid File Format',
@@ -47,23 +49,12 @@ class PublicKeyField(Field):
                     'serialisation of a public key.'
                 )
             )
-        except TypeError:
-            messagebox.showerror(
-                title='Invalid Key Type',
-                message=(
-                    f'The selected file represents a {type(key).__name__} '
-                    f'object, but a {self.key_type.__name__} object is '
-                    f'required.'
-                ),
-            )
-
-    _button_data = ButtonData('Browse...', _browse)
 
 
 class AddContactDialog(Dialog):
     def __init__(
             self,
-            master: tk.Widget | ttk.Widget,
+            master: tk.Widget | ttk.Widget | tk.Tk | tk.Toplevel,
             used_names: set[str],
             used_public_keys: set[str],
             title: str = 'Add Contact',
@@ -71,12 +62,10 @@ class AddContactDialog(Dialog):
         super().__init__(
             master=master,
             title=title,
-            description_data=self._description_data,
+            description_kwargs=self._description_kwargs,
             fields={
                 'name': Field(name='Name'),
-                'public_key': PublicKeyField(
-                    key_type=Ed25519PublicKey,
-                ),
+                'public_key': PublicKeyField(name='Public Key'),
             },
             validators=[
                 self._validate_name,
@@ -91,7 +80,10 @@ class AddContactDialog(Dialog):
         'Ed25519 public key for this contact. The public key can be loaded '
         'from a PEM-encoded serialisation.'
     )
-    _description_data = DescriptionData(_description_text, 480)
+    _description_kwargs: dict[str, int | str] = {
+        'text': _description_text,
+        'wraplength': 480,
+    }
 
     def _validate_name(self, values: dict[str, str]) -> str | None:
         name = values.get('name', '')

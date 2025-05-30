@@ -4,30 +4,36 @@ from base64 import b64decode, b64encode
 from tkinter import filedialog, messagebox, ttk
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from app_components.dialogs.base_dialogs import DescriptionData, Dialog
+from app_components.dialogs.base import Dialog
 from app_components.dialogs.fields import ButtonData, Field, PasswordField
 
 class KeyPasswordDialog(Dialog):
-    def __init__(self, master, key_data: bytes, *args, **kwargs):
+    def __init__(
+            self,
+            master: tk.Widget | ttk.Widget | tk.Tk | tk.Toplevel,
+            key_data: bytes,
+            title: str = 'Encrypted Key File',
+        ):
         super().__init__(
             master=master,
-            title='Encrypted Key File',
-            description_data=self._description_data,
+            title=title,
+            description_kwargs=self._description_kwargs,
             fields={
                 'password': PasswordField(),
             },
             validators=[
                 self._validate_password,
             ],
-            *args,
-            **kwargs,
         )
         self.key_data = key_data
 
     _description_text = 'Please enter the password for the selected file.'
-    _description_data = DescriptionData(_description_text, 480)
+    _description_kwargs: dict[str, int | str] = {
+        'text': _description_text,
+        'wraplength': 480,
+    }
 
     def _validate_password(self, values: dict[str, str]) -> str | None:
         password = values.get('password', '').encode()
@@ -38,52 +44,49 @@ class KeyPasswordDialog(Dialog):
         except ValueError:
             self.stringvars['password'].set('')
             return 'The password provided is incorrect.'
+        
 
 class PrivateKeyField(Field):
     def __init__(
             self,
             name: str = 'Private Key',
-            key_type: type = None,
-            *args,
-            **kwargs,
         ):
         super().__init__(
             name=name,
-            button_data=self._button_data,
-            hide_input=True,
-            *args,
-            **kwargs,
+            button_data=ButtonData('Browse...', self._browse),
         )
-        self.key_type = key_type
 
-    def _browse(self, entry: ttk.Entry, variable: tk.StringVar):
-        path = filedialog.askopenfilename()
-        # Exit the function if no path is provided.
-        if not path:
-            return
-        # Otherwise, attempt to load the key.
-        try:
-            with open(path, 'rb') as file:
+    @staticmethod
+    def _browse(field: Field, entry: ttk.Entry, variable: tk.StringVar):
+        # Open and read a file, terminating early if one isn't chosen.
+        file = filedialog.askopenfile('rb')
+        if file is not None:
+            try:
                 data = file.read()
+            finally:
+                file.close()
+        else:
+            return
+        # Load bytes from the chosen file and attempt to handle them.
+        try:
             key = serialization.load_pem_private_key(data, None)
-            if self.key_type and not isinstance(key, self.key_type):
+            if isinstance(key, Ed25519PrivateKey):
+                variable.set(b64encode(key.private_bytes_raw()).decode())
+                entry.focus()
+            else:
                 messagebox.showerror(
                     title='Invalid Key Type',
                     message=(
                         f'The selected file represents a {type(key).__name__} '
-                        f'object, but a {self.key_type.__name__} object is '
-                        f'required.'
+                        f'object, but an Ed25519PublicKey object is required.'
                     ),
-                )
-            else:
-                variable.set(b64encode(key.private_bytes_raw()).decode())
-                entry.focus()
+            )
         except ValueError:
             messagebox.showerror(
                 title='Invalid File Format',
                 message=(
                     'The selected file does not contain a PEM-encoded '
-                    'serialisation of a private key.'
+                    'serialisation of a public key.'
                 )
             )
         except TypeError:
@@ -92,30 +95,36 @@ class PrivateKeyField(Field):
             if password_dialog.result:
                 key = serialization.load_pem_private_key(
                     data=data,
-                    password=password_dialog.result.get('password').encode(),
+                    password=password_dialog.result['password'].encode(),
                 )
-                variable.set(b64encode(key.private_bytes_raw()).decode())
+                if isinstance(key, Ed25519PrivateKey):
+                    variable.set(b64encode(key.private_bytes_raw()).decode())
+                    entry.focus()
+                else:
+                    messagebox.showerror(
+                        title='Invalid Key Type',
+                        message=(
+                            f'The selected file represents a '
+                            f'{type(key).__name__} object, but an '
+                            f'Ed25519PublicKey object is required.'
+                        ),
+                    )
             entry.winfo_toplevel().grab_set()
 
-    _button_data = ButtonData('Browse...', _browse)
+
 
 class SignatureKeyDialog(Dialog):
-    def __init__(self, master, title: str = 'Signature Key', *args, **kwargs):
+    def __init__(
+            self,
+            master: tk.Widget | ttk.Widget | tk.Tk | tk.Toplevel,
+            title: str = 'Signature Key',
+        ):
         super().__init__(
             master=master,
             title=title,
-            description_data=self._description_data,
-            fields={
-                'signature_key': PrivateKeyField(
-                    name='Signature Key',
-                    key_type=ed25519.Ed25519PrivateKey,
-                ),
-            },
-            validators=[
-                self._validate_key,
-            ],
-            *args,
-            **kwargs,
+            description_kwargs=self._description_kwargs,
+            fields={'signature_key': PrivateKeyField(name='Signature Key')},
+            validators=[self._validate_key],
         )
         
     _description_text = (
@@ -126,7 +135,10 @@ class SignatureKeyDialog(Dialog):
         'loaded from a PEM-encoded serialisation. If the serialisation is '
         'encrypted, you will be asked for the password.'
     )
-    _description_data = DescriptionData(_description_text, 480)
+    _description_kwargs: dict[str, int | str] = {
+        'text': _description_text,
+        'wraplength': 480,
+    }
     
     def _validate_key(self, values: dict[str, str]) -> str | None:
         key = values.get('signature_key', '')

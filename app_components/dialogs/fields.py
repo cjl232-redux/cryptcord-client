@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 from typing import Callable
 import tkinter as tk
-from tkinter import filedialog, ttk
-from app_components import dialogs
+from tkinter import ttk
 
 @dataclass
 class ButtonData:
@@ -10,13 +9,14 @@ class ButtonData:
     command: Callable[['Field', ttk.Entry, tk.StringVar], None]
 
 
+
 class Field:
     def __init__(
             self,
             name: str,
-            default: str = None,
+            default: str | None = None,
             read_only: bool = False,
-            button_data: ButtonData = None,
+            button_data: ButtonData | None = None,
             hide_input: bool = False,
         ):
         self.name = name
@@ -27,7 +27,7 @@ class Field:
 
     def load_widgets(
             self,
-            dialog,
+            dialog: tk.Toplevel,
         ) -> tuple[ttk.Label, ttk.Entry, ttk.Button | None, tk.StringVar]:
         var = tk.StringVar(dialog, value=self.default)
         label = ttk.Label(dialog, text=f'{self.name}:')
@@ -44,32 +44,31 @@ class Field:
                 text=self.button_data.text,
                 command=bound_command,
             )
-            button.bind('<Return>', lambda _: bound_command())
+            button.bind('<Return>', lambda *_: bound_command())
         else:
             button = None
         return label, entry, button, var
+
     
 class PasswordField(Field):
-    def __init__(self, name: str = 'Password', *args, **kwargs):
+    def __init__(self, name: str = 'Password'):
         super().__init__(
             name=name,
-            button_data=self._button_data,
+            button_data=ButtonData('Show/Hide', self._toggle_visibility),
             hide_input=True,
-            *args,
-            **kwargs,
         )
 
-    def _toggle_visibility(entry: ttk.Entry, _: tk.StringVar):
+    @staticmethod
+    def _toggle_visibility(field: Field, entry: ttk.Entry, _: tk.StringVar):
         entry.config(show='●' if entry.cget('show') == '' else '')
         entry.focus()
+    
 
-    _button_data = ButtonData('Show/Hide', _toggle_visibility)
+# class FilePathField(Field):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(button_data=self._button_data, *args, **kwargs)
 
-class FilePathField(Field):
-    def __init__(self, *args, **kwargs):
-        super().__init__(button_data=self._button_data, *args, **kwargs)
+#     def _browse(self, _: ttk.Entry, variable: tk.StringVar):
+#         variable.set(filedialog.askopenfilename())
 
-    def _browse(_: ttk.Entry, variable: tk.StringVar):
-        variable.set(filedialog.askopenfilename())
-
-    _button_data = ButtonData('Browse...', _browse)
+#     _button_data = ButtonData('Browse...', _browse)
