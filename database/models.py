@@ -1,8 +1,19 @@
+import enum
+
 from datetime import datetime
 
+import sqlalchemy
+
 from sqlalchemy import ForeignKey, Index
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import DateTime, String, Text
+
+class MessageType(enum.Enum):
+    SENT = 'S'
+    RECIEVED = 'R'
+
+def values_callable(x: type[enum.Enum]):
+    return [i.value for i in x]
 
 class Base(DeclarativeBase):
     pass
@@ -31,11 +42,15 @@ class Contact(Base):
         String(44),
         nullable=True,
     )
+    messages: Mapped[list['Message']] = relationship(
+        back_populates='contact',
+        cascade='all, delete-orphan',
+    )
 
 class Message(Base):
     __tablename__ = 'messages'
     __table_args__ = (
-        Index('message_retrieval_index', 'sender_id', 'timestamp'),
+        Index('message_retrieval_index', 'contact_id', 'timestamp'),
     )
 
     id: Mapped[int] = mapped_column(
@@ -49,10 +64,14 @@ class Message(Base):
         DateTime(timezone=True),
         nullable=False,
     )
-    sender_id: Mapped[int] = mapped_column(
+    contact_id: Mapped[int] = mapped_column(
         ForeignKey(
             column='contacts.id',
             ondelete='CASCADE',
             onupdate='CASCADE',
         )
+    )
+    contact: Mapped[Contact] = relationship(back_populates='messages')
+    message_type: Mapped[MessageType] = mapped_column(
+        sqlalchemy.Enum(MessageType, values_callable=values_callable),
     )
