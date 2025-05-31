@@ -57,9 +57,7 @@ class ScrollableFrame(ttk.Frame):
             self.canvas.yview_scroll(-self.scroll_speed, 'units')
 
     def _bind_mousewheel(self, *_):
-        print('bound')
         self.winfo_toplevel().bind('<MouseWheel>', self._on_mousewheel)
 
     def _unbind_mousewheel(self, *_):
-        print('unbound')
         self.winfo_toplevel().unbind('<MouseWheel>')

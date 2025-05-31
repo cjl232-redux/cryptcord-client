@@ -1,3 +1,28 @@
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+import logging
+
+logging.basicConfig()
+logger = logging.getLogger("sqlalchemy.explain")
+logger.setLevel(logging.INFO)
+
+# Need to pass settings dict through
+
+def explain_query(conn, cursor, statement, parameters, context, executemany):
+    if statement.lstrip().upper().startswith("SELECT"):
+        try:
+            explain_stmt = f"EXPLAIN QUERY PLAN {statement}"
+            cursor.execute(explain_stmt, parameters)
+            plan = cursor.fetchall()
+            logger.info("Query: %s", statement)
+            logger.info("Parameters: %s", parameters)
+            logger.info("EXPLAIN plan:")
+            for row in plan:
+                logger.info(row)
+        except Exception as e:
+            logger.warning("EXPLAIN QUERY PLAN failed: %s", e)
+
+
 import os
 #import sqlite3
 import tkinter as tk
@@ -46,7 +71,8 @@ class Application(tk.Tk):
 
         try:
             # Attempt to start the engine with the provided url.
-            self.engine = create_engine(database_url, echo=True)
+            self.engine = create_engine(database_url, echo=False)
+            event.listen(self.engine, "before_cursor_execute", explain_query)
         except:
             # If an exception is raised, terminate with a message.
             messagebox.showerror(
@@ -94,20 +120,21 @@ class Application(tk.Tk):
             signature_key=self.signature_key,
         )
 
-        # Save any changes to settings.
-        with open(SETTINGS_FILE_PATH, 'w') as file:
-            yaml.safe_dump(settings, file)
-
-        # Restore the main window and render the body.
+        # Restore the main window and render all children.
         self.deiconify()
         self.body = Body(
             master=self,
             engine=self.engine,
             signature_key=self.signature_key,
+            settings=settings,
         )
         self.body.grid(column=0, row=0, sticky='nsew', padx=5, pady=5)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
+
+        # Save any changes to settings.
+        with open(SETTINGS_FILE_PATH, 'w') as file:
+            yaml.safe_dump(settings, file)
 
         # Test
         # from base64 import b64encode

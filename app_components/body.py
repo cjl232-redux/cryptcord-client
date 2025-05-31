@@ -2,6 +2,7 @@ import tkinter as tk
 
 from base64 import b64encode
 from tkinter import ttk
+from typing import Any
 
 import pyperclip
 
@@ -16,13 +17,14 @@ class Body(ttk.Frame):
             master: tk.Tk,
             engine: Engine,
             signature_key: Ed25519PrivateKey,
+            settings: dict[str, Any],
         ):
         super().__init__(master)
 
         # Dedicate the main part of the body to a notebook.
         self.notebook = ttk.Notebook(self)
         self.notebook.add(
-            child=ContactsPane(self, engine, signature_key),
+            child=ContactsPane(self, engine, signature_key, settings),
             text='Contacts',
         )
         self.notebook.grid(
