@@ -34,14 +34,8 @@ class Contact(Base):
         unique=True,
         nullable=False,
     )
-    pending_exchange_key: Mapped[str] = mapped_column(
-        String(44),
-        nullable=True,
-    )
-    encryption_key: Mapped[str] = mapped_column(
-        String(44),
-        nullable=True,
-    )
+    pending_exchange_key: Mapped[str | None] = mapped_column(String(44))
+    fernet_key: Mapped[str | None] = mapped_column(String(44), default='DwS09r1HB50brD7sMiFh3-L7wOysG41awLihdKPKKp8=')
     messages: Mapped[list['Message']] = relationship(
         back_populates='contact',
         cascade='all, delete-orphan',

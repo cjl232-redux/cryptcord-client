@@ -1,5 +1,4 @@
 from sqlalchemy import event
-from sqlalchemy.engine import Engine
 import logging
 
 logging.basicConfig()
@@ -24,7 +23,6 @@ def explain_query(conn, cursor, statement, parameters, context, executemany):
 
 
 import os
-#import sqlite3
 import tkinter as tk
 
 from base64 import b64decode
@@ -39,7 +37,7 @@ from sqlalchemy import create_engine
 from app_components.body import Body
 from app_components.dialogs.private_key_dialogs import SignatureKeyDialog
 from app_components.dialogs.server_dialogs import ServerDialog
-from app_components.server_connections import ServerContext
+from app_components.server_interface import ServerInterface
 from database import models
 
 SETTINGS_FILE_PATH = 'settings.yaml'
@@ -114,7 +112,7 @@ class Application(tk.Tk):
             return
         
         # Otherwise, initialise the server context.
-        self.server_context = ServerContext(
+        self.server_interface = ServerInterface(
             host=server_dialog.result['ip_address'],
             port=int(server_dialog.result['port_number']),
             signature_key=self.signature_key,
@@ -126,6 +124,7 @@ class Application(tk.Tk):
             master=self,
             engine=self.engine,
             signature_key=self.signature_key,
+            server_interface=self.server_interface,
             settings=settings,
         )
         self.body.grid(column=0, row=0, sticky='nsew', padx=5, pady=5)

@@ -4,6 +4,7 @@ import sqlite3
 from base64 import b64decode, b64encode
 from contextlib import closing
 from tkinter import messagebox, ttk
+from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from sqlalchemy import Engine, select
@@ -11,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from app_components.dialogs.contact_dialogs import AddContactDialog
 from app_components.messages import MessageWindow
-from app_components.scrollable_frames import VerticalFrame
+from app_components.scrollable_frames import ScrollableFrame
+from app_components.server_interface import ServerInterface
 from database.models import Contact
 
 # Button to send exchange request
@@ -19,25 +21,27 @@ from database.models import Contact
 # For messages: periodic refresh. Store last refresh time (on startup, take
 # it from the maximum value saved in messages)
 
-class _ExistingContactsFrame(VerticalFrame):
+class _ExistingContactsFrame(ScrollableFrame):
     def __init__(
             self,
             master: ttk.Frame,
             engine: Engine,
             signature_key: ed25519.Ed25519PrivateKey,
+            server_interface: ServerInterface,
             scroll_speed: int = 5,
         ):
         super().__init__(
             master=master,
             scroll_speed=scroll_speed,
         )
-        #self.name_labels: list[ttk.Label] = []
         self.engine = engine
         self.signature_key = signature_key
-        self.load_contacts()
+        self.server_interface = server_interface
+        self.retrieve_contacts()
+        self.opened_message_windows: dict[int, MessageWindow] = {}
         #self.after(2000, self._retrieve_keys)
 
-    def load_contacts(self):
+    def retrieve_contacts(self):
         for child in self.interior.winfo_children():
             child.grid_forget()
         with Session(self.engine) as session:
@@ -45,62 +49,32 @@ class _ExistingContactsFrame(VerticalFrame):
             for i, contact in enumerate(session.scalars(statement)):
                 label = ttk.Label(self.interior, text=contact.name)
                 label.grid(column=0, row=i, sticky='w', pady=(0, 5,))
+                message_button = ttk.Button(
+                    master=self.interior,
+                    text='Message',
+                    command=lambda id=contact.id: self._open_messages(id),
+                )
+                message_button.grid(column=1, row=i, pady=(0, 5,))
                 remove_button = ttk.Button(
                     master=self.interior,
                     text='Remove',
                     command=lambda id=contact.id: self._remove_contact(id),
                 )
-                remove_button.grid(column=1, row=i, pady=(0, 5,))
+                remove_button.grid(column=2, row=i, pady=(0, 5,))
         self.interior.columnconfigure(0, weight=1)
 
-    #     with closing(self.client_db.cursor()) as cursor:
-    #         cursor.execute(' '.join([
-    #             'SELECT',
-    #             '    contacts.id,',
-    #             '    contacts.name,',
-    #             '    contacts.ed25519_public_key,',
-    #             '    pending_exchanges.id IS NOT NULL AS exchange_pending,',
-    #             '    encryption_keys.id IS NOT NULL AS exchange_complete',
-    #             'FROM',
-    #             '    contacts',
-    #             'LEFT JOIN',
-    #             '    encryption_keys',
-    #             'ON',
-    #             '    contacts.id = encryption_keys.contact_id',
-    #             'LEFT JOIN',
-    #             '    pending_exchanges',
-    #             'ON',
-    #             '    contacts.id = pending_exchanges.contact_id',
-    #             'ORDER BY',
-    #             '    contacts.name',
-    #         ]))
-    #         for i, contact in enumerate(cursor.fetchall()):
-    #             print(contact)
-    #             label = ttk.Label(self.interior, text=contact[1])
-    #             label.grid(column=0, row=i, sticky='w', pady=(0, 5,))
-    #             key_status = ttk.Label(self.interior, text='Pending')
-    #             if contact[4]:
-    #                 key_status.config(text='Exchanged')
-    #             elif not contact[3]:
-    #                 self._post_key(contact[0], contact[2])
-    #             key_status.grid(column=1, row=i, sticky='w', pady=(0, 5,))
-    #             message_button = ttk.Button(
-    #                 master=self.interior,
-    #                 text='Message',
-    #                 command=lambda id=contact[0]: self.open_messages(id),
-    #             )
-    #             message_button.grid(column=2, row=i, pady=(0, 5,))
-    #             remove_button = ttk.Button(
-    #                 master=self.interior,
-    #                 text='Remove',
-    #                 command=lambda id=contact[0]: self.remove_contact(id),
-    #             )
-    #             remove_button.grid(column=3, row=i, pady=(0, 5,))
-    #         self.interior.columnconfigure(0, weight=1)
-
-    # def open_messages(self, id: int):
-    #     local_database = self.winfo_toplevel().db_connection
-    #     MessageWindow(self.winfo_toplevel(), id, local_database)
+    def _open_messages(self, contact_id: int):
+        window = self.opened_message_windows.get(contact_id)
+        if window is not None and window.winfo_exists():
+            window.focus()
+        else:
+            self.opened_message_windows[contact_id] = MessageWindow(
+                master=self.winfo_toplevel(),
+                engine=self.engine,
+                signature_key=self.signature_key,
+                server_interface=self.server_interface,
+                contact_id=contact_id,
+            )
 
     def _remove_contact(self, id: int):
         with Session(self.engine) as session:
@@ -115,7 +89,7 @@ class _ExistingContactsFrame(VerticalFrame):
             if response:
                 session.delete(contact)
                 session.commit()
-                self.load_contacts()
+                self.retrieve_contacts()
 
     #     db_connection = self.winfo_toplevel().db_connection
     #     with closing(db_connection.cursor()) as cursor:
@@ -241,40 +215,77 @@ class ContactsPane(ttk.Frame):
             master: ttk.Frame,
             engine: Engine,
             signature_key: ed25519.Ed25519PrivateKey,
+            server_interface: ServerInterface,
+            settings: dict[str, Any]
         ):
+        # Call the parent constructor and store values.
         super().__init__(master)
         self.engine = engine
         self.signature_key = signature_key
 
-        self.add_button = ttk.Button(
-            master=self,
-            text='Add Contact',
-            command=self._add_contact,
-        )
-        self.add_button.grid(column=0, row=0)
-
+        # Create and place the contacts list.
         self.existing_contacts = _ExistingContactsFrame(
             master=self,
             engine=self.engine,
             signature_key=self.signature_key,
+            server_interface=server_interface,
             scroll_speed=5,
         )
-        self.refresh_button = ttk.Button(
-            master=self,
-            text='Refresh',
-            command=self.existing_contacts.load_contacts,
-        )
-        self.refresh_button.grid(column=1, row=0)
         self.existing_contacts.grid(
             column=0,
             row=1,
             columnspan=2,
             sticky='nsew',
-            padx=(5, 0,),
-            pady=(5, 0,),
+            padx=10,
+            pady=(5, 10,),
         )
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
+
+        # Create and place control buttons.
+        self.add_button = ttk.Button(
+            master=self,
+            text='Add Contact',
+            command=self._add_contact,
+        )
+        self.add_button.grid(
+            column=0,
+            row=0,
+            sticky='e',
+            padx=(10, 5),
+            pady=(10, 5),
+        )
+        self.refresh_button = ttk.Button(
+            master=self,
+            text='Refresh',
+            command=self.existing_contacts.retrieve_contacts,
+        )
+        self.refresh_button.grid(
+            column=1,
+            row=0,
+            sticky='ew',
+            padx=(5, 10),
+            pady=(10, 5),
+        )
+
+        # Use the signature key to pre-prepare retrieval requests.
+        # Probably avoid this, since it's a lot more code overall if I
+        # pre-prepare every time. Although... I could condense this!
+        # TODO: utility function somewhere to do it
+        retrieve_keys_request_data = {
+            'action': 'retrieve_keys',
+        }
+        signature_bytes = signature_key.sign(
+            data=json.dumps(retrieve_keys_request_data).encode(),
+        )
+        public_key_bytes = signature_key.public_key().public_bytes_raw()
+        retrieve_keys_request: dict[str, Any] = {
+            'data': retrieve_keys_request_data,
+            'signature': b64encode(signature_bytes).decode(),
+            'public_key': b64encode(public_key_bytes).decode(),
+        }
+        self.retrieve_keys_request = json.dumps(retrieve_keys_request).encode()
+
 
 
     def _add_contact(self):
@@ -296,4 +307,9 @@ class ContactsPane(ttk.Frame):
                 )
                 session.add(contact)
                 session.commit()
-            self.existing_contacts.load_contacts()
+            self.existing_contacts.retrieve_contacts()
+
+    # def _retrieve_keys(self):
+    #     request = 
+    #     pass
+    # Likely need to pass through a connection context too

@@ -32,9 +32,9 @@ async def simulate_connection(user: User):
     await asyncio.sleep(user.connection_time)
     if user.message:
         data = {
-            'command': 'SEND_MESSAGE2',
+            'command': 'POST_MESSAGE',
             'recipient_public_key': b64encode(user.recipient_public_key.public_bytes_raw()).decode(),
-            'encrypted_message': user.message,
+            'ciphertext': user.message,
             'signature': b64encode(user.private_key.sign(user.message.encode())).decode(),
         }
         signature = b64encode(user.private_key.sign(json.dumps(data).encode()))
@@ -58,7 +58,7 @@ async def simulate_connection(user: User):
 
     # Retrieve messages.
     data = {
-        'command': 'GET_MESSAGES',
+        'command': 'RETRIEVE_MESSAGES',
     }
     signature = b64encode(user.private_key.sign(json.dumps(data).encode()))
     public_key = b64encode(user.private_key.public_key().public_bytes_raw())

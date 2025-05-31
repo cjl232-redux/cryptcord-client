@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import Engine
 
 from app_components.contacts import ContactsPane
+from app_components.server_interface import ServerInterface
 
 class Body(ttk.Frame):
     def __init__(
@@ -17,14 +18,22 @@ class Body(ttk.Frame):
             master: tk.Tk,
             engine: Engine,
             signature_key: Ed25519PrivateKey,
+            server_interface: ServerInterface,
             settings: dict[str, Any],
         ):
+        # Call the parent constructor and store values.
         super().__init__(master)
 
         # Dedicate the main part of the body to a notebook.
         self.notebook = ttk.Notebook(self)
         self.notebook.add(
-            child=ContactsPane(self, engine, signature_key, settings),
+            child=ContactsPane(
+                self,
+                engine,
+                signature_key,
+                server_interface,
+                settings,
+            ),
             text='Contacts',
         )
         self.notebook.grid(
