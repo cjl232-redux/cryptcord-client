@@ -19,7 +19,8 @@ from app_components.dialogs.private_key_dialogs import SignatureKeyDialog
 from app_components.dialogs.server_dialogs import ServerDialog
 from app_components.tasks import TaskManager
 from app_components import server_interface
-from database import models, operations
+from database import models
+from sideline import operations
 
 SETTINGS_FILE_PATH = 'settings.yaml'
 

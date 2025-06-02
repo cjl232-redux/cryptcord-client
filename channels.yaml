@@ -1,7 +1,0 @@
-direct_messages:
-- encryption_key: u5p7NcoWgn_RteUGVjiWoMGObnU8PUA_X1OlZEAyTb8=
-  verification_key_path: verification_keys/dedede.pem
-- encryption_key: 94FWYQ0DVuVf5Oj9RPxC1IlYAwyxLX-kwWMqYAEsPrI=
-  verification_key_path: verification_keys/dedede.pem
-- exchange_key_path: 94FWYQ0DVuVf5Oj9RPxC1IlYAwyxLX-kwWMqYAEsPrI=
-  verification_key_path: verification_keys/dedede.pem

@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 from pydantic import BaseModel
 from sqlalchemy import Engine
 
-from database import operations
+from sideline import operations
 from database.models import Message, MessageType
 from model_types import StrFromBase64
 
@@ -88,6 +88,22 @@ class TaskManager(tk.Frame):
 
                 # Check that a shared secret key is available.
                 if not contact.fernet_key:
+                    continue
+                print(i)
+                i += 1
+
+                # Verify the signature provided.
+                text_bytes = message.encrypted_text.encode()
+                print(text_bytes)
+                signature = urlsafe_b64decode(message.signature)
+                print(signature)
+                print(urlsafe_b64decode(message.sender_key))
+                try:
+                    sender_key = ed25519.Ed25519PublicKey.from_public_bytes(
+                        data=urlsafe_b64decode(message.sender_key),
+                    )
+                    sender_key.verify(signature, text_bytes)
+                except InvalidSignature:
                     continue
                 print(i)
                 i += 1

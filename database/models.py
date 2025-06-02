@@ -1,19 +1,7 @@
 import enum
 
-from datetime import datetime
-
-import sqlalchemy
-
-from sqlalchemy import ForeignKey, Index
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.types import DateTime, String, Text
-
-class MessageType(enum.Enum):
-    SENT = 'S'
-    RECIEVED = 'R'
-
-def values_callable(x: type[enum.Enum]):
-    return [i.value for i in x]
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import String
 
 class Base(DeclarativeBase):
     pass
@@ -22,53 +10,109 @@ class Contact(Base):
     __tablename__ = 'contacts'
 
     id: Mapped[int] = mapped_column(
-        primary_key=True,
+        primary_key=True
     )
     name: Mapped[str] = mapped_column(
         String(255),
         unique=True,
         nullable=False,
     )
-    public_key: Mapped[str] = mapped_column(
+    public_verification_key: Mapped[str] = mapped_column(
         String(44),
         unique=True,
         nullable=False,
     )
-    ephemeral_key: Mapped[str | None] = mapped_column(String(44))
-    fernet_key: Mapped[str | None] = mapped_column(String(44), default='DwS09r1HB50brD7sMiFh3-L7wOysG41awLihdKPKKp8=')
-    messages: Mapped[list['Message']] = relationship(
-        back_populates='contact',
-        cascade='all, delete-orphan',
+    private_ephemeral_key: Mapped[str] = mapped_column(
+        String(44),
+        nullable=True,
     )
+    fernet_key: Mapped[str] = mapped_column(
+        String(44),
+        nullable=True,
+    )
+
+class MessageType(enum.Enum):
+    SENT = 'S'
+    RECEIVED = 'R'
 
 class Message(Base):
     __tablename__ = 'messages'
     __table_args__ = (
-        Index('message_retrieval_index', 'contact_id', 'timestamp'),
+        # Index this once I decide on the precise operations
     )
 
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-    )
-    text: Mapped[str] = mapped_column(
-        Text(),
-        nullable=False,
-    )
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-    contact_id: Mapped[int] = mapped_column(
-        ForeignKey(
-            column='contacts.id',
-            ondelete='CASCADE',
-            onupdate='CASCADE',
-        )
-    )
-    contact: Mapped[Contact] = relationship(back_populates='messages')
-    message_type: Mapped[MessageType] = mapped_column(
-        sqlalchemy.Enum(MessageType, values_callable=values_callable),
-    )
-    nonce: Mapped[int] = mapped_column(
-        unique=True,
-    )
+
+# import enum
+
+# from datetime import datetime
+
+# import sqlalchemy
+
+# from sqlalchemy import ForeignKey, Index
+# from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+# from sqlalchemy.types import DateTime, String, Text
+
+# class MessageType(enum.Enum):
+#     SENT = 'S'
+#     RECIEVED = 'R'
+
+# def values_callable(x: type[enum.Enum]):
+#     return [i.value for i in x]
+
+# class Base(DeclarativeBase):
+#     pass
+
+# class Contact(Base):
+#     __tablename__ = 'contacts'
+
+#     id: Mapped[int] = mapped_column(
+#         primary_key=True,
+#     )
+#     name: Mapped[str] = mapped_column(
+#         String(255),
+#         unique=True,
+#         nullable=False,
+#     )
+#     public_key: Mapped[str] = mapped_column(
+#         String(44),
+#         unique=True,
+#         nullable=False,
+#     )
+#     ephemeral_key: Mapped[str | None] = mapped_column(String(44))
+#     fernet_key: Mapped[str | None] = mapped_column(String(44), default='DwS09r1HB50brD7sMiFh3-L7wOysG41awLihdKPKKp8=')
+#     messages: Mapped[list['Message']] = relationship(
+#         back_populates='contact',
+#         cascade='all, delete-orphan',
+#     )
+
+# class Message(Base):
+#     __tablename__ = 'messages'
+#     __table_args__ = (
+#         Index('message_retrieval_index', 'contact_id', 'timestamp'),
+#     )
+
+#     id: Mapped[int] = mapped_column(
+#         primary_key=True,
+#     )
+#     text: Mapped[str] = mapped_column(
+#         Text(),
+#         nullable=False,
+#     )
+#     timestamp: Mapped[datetime] = mapped_column(
+#         DateTime(timezone=True),
+#         nullable=False,
+#     )
+#     contact_id: Mapped[int] = mapped_column(
+#         ForeignKey(
+#             column='contacts.id',
+#             ondelete='CASCADE',
+#             onupdate='CASCADE',
+#         )
+#     )
+#     contact: Mapped[Contact] = relationship(back_populates='messages')
+#     message_type: Mapped[MessageType] = mapped_column(
+#         sqlalchemy.Enum(MessageType, values_callable=values_callable),
+#     )
+#     nonce: Mapped[int] = mapped_column(
+#         unique=True,
+#     )
