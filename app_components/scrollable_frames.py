@@ -16,7 +16,7 @@ class ScrollableFrame(ttk.Frame):
 
         # Store values.
         self.scroll_speed = scroll_speed
-
+        
         # Create and place the canvas and scrollbar.
         self.canvas = tk.Canvas(self)
         self.scrollbar = ttk.Scrollbar(

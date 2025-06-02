@@ -10,7 +10,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import Engine
 
 from app_components.contacts import ContactsPane
-from app_components.server_interface import ServerInterface
 
 class Body(ttk.Frame):
     def __init__(
@@ -18,7 +17,6 @@ class Body(ttk.Frame):
             master: tk.Tk,
             engine: Engine,
             signature_key: Ed25519PrivateKey,
-            server_interface: ServerInterface,
             settings: dict[str, Any],
         ):
         # Call the parent constructor and store values.
@@ -31,7 +29,6 @@ class Body(ttk.Frame):
                 self,
                 engine,
                 signature_key,
-                server_interface,
                 settings,
             ),
             text='Contacts',

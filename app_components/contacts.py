@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from app_components.dialogs.contact_dialogs import AddContactDialog
 from app_components.messages import MessageWindow
 from app_components.scrollable_frames import ScrollableFrame
-from app_components.server_interface import ServerInterface
 from database.models import Contact
 
 # Button to send exchange request
@@ -27,7 +26,6 @@ class _ExistingContactsFrame(ScrollableFrame):
             master: ttk.Frame,
             engine: Engine,
             signature_key: ed25519.Ed25519PrivateKey,
-            server_interface: ServerInterface,
             scroll_speed: int = 5,
         ):
         super().__init__(
@@ -36,7 +34,6 @@ class _ExistingContactsFrame(ScrollableFrame):
         )
         self.engine = engine
         self.signature_key = signature_key
-        self.server_interface = server_interface
         self.retrieve_contacts()
         self.opened_message_windows: dict[int, MessageWindow] = {}
         #self.after(2000, self._retrieve_keys)
@@ -72,7 +69,6 @@ class _ExistingContactsFrame(ScrollableFrame):
                 master=self.winfo_toplevel(),
                 engine=self.engine,
                 signature_key=self.signature_key,
-                server_interface=self.server_interface,
                 contact_id=contact_id,
             )
 
@@ -215,7 +211,6 @@ class ContactsPane(ttk.Frame):
             master: ttk.Frame,
             engine: Engine,
             signature_key: ed25519.Ed25519PrivateKey,
-            server_interface: ServerInterface,
             settings: dict[str, Any]
         ):
         # Call the parent constructor and store values.
@@ -228,7 +223,6 @@ class ContactsPane(ttk.Frame):
             master=self,
             engine=self.engine,
             signature_key=self.signature_key,
-            server_interface=server_interface,
             scroll_speed=5,
         )
         self.existing_contacts.grid(

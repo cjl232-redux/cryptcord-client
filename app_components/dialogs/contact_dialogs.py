@@ -1,6 +1,6 @@
 import tkinter as tk
 # FIX REMAINING ERRORS
-from base64 import b64decode, b64encode
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from tkinter import filedialog, messagebox, ttk
 
 from cryptography.hazmat.primitives import serialization
@@ -31,7 +31,7 @@ class PublicKeyField(Field):
                 data = file.read()
             key = serialization.load_pem_public_key(data)
             if isinstance(key, Ed25519PublicKey):
-                variable.set(b64encode(key.public_bytes_raw()).decode())
+                variable.set(urlsafe_b64encode(key.public_bytes_raw()).decode())
                 entry.focus()
             else:
                 messagebox.showerror(
@@ -99,10 +99,11 @@ class AddContactDialog(Dialog):
         elif key in self.used_public_keys:
             return 'The value provided for the key field is already in use.'
         try:
-            if len(b64decode(key, validate=True)) != 32:
+            if len(urlsafe_b64decode(key)) != 32:
                 raise ValueError()
         except:
             return (
                 'The value provided for the public key field is not a valid '
                 'Base64 representation of a 32-byte key.'
             )
+        values['public_key'] = urlsafe_b64encode(urlsafe_b64decode(key)).decode()

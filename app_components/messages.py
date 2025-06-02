@@ -11,7 +11,6 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from app_components.scrollable_frames import ScrollableFrame
-from app_components.server_interface import ServerInterface
 from database.models import Contact, Message, MessageType
 
 # Ideally want to make return (NOT shift return) send message
@@ -27,14 +26,12 @@ class MessageWindow(tk.Toplevel):
             master: tk.Widget | ttk.Widget | tk.Tk | tk.Toplevel,
             engine: Engine,
             signature_key: Ed25519PrivateKey,
-            server_interface: ServerInterface,
             contact_id: int,
         ):
         # Call the parent constructor and store key values.
         super().__init__(master)
         self.engine = engine
         self.signature_key = signature_key
-        self.server_interface = server_interface
         self.contact_id = contact_id
         self.last_message_timestamp = datetime.min
         self.loaded_messages: set[int] = set()

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app_components.body import Body
 from app_components.dialogs.private_key_dialogs import SignatureKeyDialog
 from app_components.dialogs.server_dialogs import ServerDialog
+from app_components.tasks import TaskManager
 from app_components import server_interface
 from database import models, operations
 
@@ -91,10 +92,6 @@ class Application(tk.Tk):
         self.public_key_bytes = self.public_key.public_bytes_raw()
         self.base64_public_key = b64encode(self.public_key_bytes).decode()
 
-        # Create a contact data dictionary from values in the database.
-        self.contact_dict = operations.get_contact_dict(self.engine)
-        print(self.contact_dict)
-
         # Get the server information with a dialog.
         server_dialog = ServerDialog(self, title='Server Connection')
         self.wait_window(server_dialog)
@@ -104,12 +101,12 @@ class Application(tk.Tk):
             self.destroy()
             return
         
-        # # Otherwise, initialise the server context.
-        self.server_interface = server_interface.ServerInterface(
-            host=server_dialog.result['ip_address'],
-            port=int(server_dialog.result['port_number']),
-            signature_key=self.signature_key,
-        )
+        # # # Otherwise, initialise the server context.
+        # self.server_interface = server_interface.ServerInterface(
+        #     host=server_dialog.result['ip_address'],
+        #     port=int(server_dialog.result['port_number']),
+        #     signature_key=self.signature_key,
+        # )
 
         # Restore the main window and render all children.
         self.deiconify()
@@ -117,7 +114,6 @@ class Application(tk.Tk):
             master=self,
             engine=self.engine,
             signature_key=self.signature_key,
-            server_interface=self.server_interface,
             settings=settings,
         )
         self.body.grid(column=0, row=0, sticky='nsew', padx=5, pady=5)
@@ -127,8 +123,14 @@ class Application(tk.Tk):
         # Save any changes to settings.
         with open(SETTINGS_FILE_PATH, 'w') as file:
             yaml.safe_dump(settings, file)
-        
-        self.after(SERVER_RETRIEVE_REFRESH_TIME, self._tasks)
+
+        # Set up the task manager.
+        self.task_manager = TaskManager(
+            master=self,
+            engine=self.engine,
+            signature_key=self.signature_key,
+            frequency_ms=300,
+        )
 
         # Test
         # from base64 import b64encode

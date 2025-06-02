@@ -3,21 +3,23 @@ from dataclasses import dataclass
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from database.models import Contact
+from database.models import Contact, Message
+from database.schemas import ContactSchema
 
 @dataclass
-class ContactInfo:
+class ContactData:
     id: int
-    fernet_key: str | None
 
-type ContactDict = dict[str, ContactInfo]
 
-def get_contact_dict(engine: Engine) -> ContactDict:
-    result: ContactDict = {}
+def get_contacts(engine: Engine) -> list[Contact]:
     with Session(engine) as session:
-        for contact in session.scalars(select(Contact)):
-            result[contact.public_key] = ContactInfo(
-                contact.id,
-                contact.fernet_key,
-            )
-        return result
+        return list(session.scalars(select(Contact)))
+
+def get_message_nonces(engine: Engine) -> set[int]:
+    with Session(engine) as session:
+        return set(session.scalars(select(Message.nonce)))
+    
+def store_messages(engine: Engine, messages: list[Message]):
+    with Session(engine) as session:
+        session.add_all(messages)
+        session.commit()

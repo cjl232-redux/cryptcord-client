@@ -34,7 +34,7 @@ class Contact(Base):
         unique=True,
         nullable=False,
     )
-    pending_exchange_key: Mapped[str | None] = mapped_column(String(44))
+    ephemeral_key: Mapped[str | None] = mapped_column(String(44))
     fernet_key: Mapped[str | None] = mapped_column(String(44), default='DwS09r1HB50brD7sMiFh3-L7wOysG41awLihdKPKKp8=')
     messages: Mapped[list['Message']] = relationship(
         back_populates='contact',
@@ -68,4 +68,7 @@ class Message(Base):
     contact: Mapped[Contact] = relationship(back_populates='messages')
     message_type: Mapped[MessageType] = mapped_column(
         sqlalchemy.Enum(MessageType, values_callable=values_callable),
+    )
+    nonce: Mapped[int] = mapped_column(
+        unique=True,
     )
