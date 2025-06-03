@@ -18,7 +18,7 @@ def validate_b64_verification_key(value: str) -> Ed25519PublicKey:
     except ValueError:
         raise ValueError('Value must have an unencoded length of 32 bytes')
     
-def validate_b64_ephemeral_key(value: str) -> X25519PrivateKey:
+def _validate_b64_ephemeral_key(value: str) -> X25519PrivateKey:
     try:
         raw_bytes = urlsafe_b64decode(value)
         return X25519PrivateKey.from_private_bytes(raw_bytes)
@@ -27,7 +27,7 @@ def validate_b64_ephemeral_key(value: str) -> X25519PrivateKey:
     except ValueError:
         raise ValueError('Value must have an unencoded length of 32 bytes')
     
-def validate_b64_fernet_key(value: str) -> Fernet:
+def _validate_b64_fernet_key(value: str) -> Fernet:
     try:
         return Fernet(urlsafe_b64encode(urlsafe_b64decode(value)))
     except binascii.Error:
@@ -35,31 +35,41 @@ def validate_b64_fernet_key(value: str) -> Fernet:
     except ValueError:
         raise ValueError('Value must have an unencoded length of 32 bytes')
 
-type PublicVerificationKey = Annotated[
+type _PublicVerificationKey = Annotated[
     Ed25519PublicKey,
     BeforeValidator(validate_b64_verification_key),
 ]
 
-type PrivateEphemeralKey = Annotated[
+type _PrivateEphemeralKey = Annotated[
     X25519PrivateKey,
-    BeforeValidator(validate_b64_ephemeral_key),
+    BeforeValidator(_validate_b64_ephemeral_key),
 ]
 
-type FernetKey = Annotated[
+type _FernetKey = Annotated[
     Fernet,
-    BeforeValidator(validate_b64_fernet_key),
+    BeforeValidator(_validate_b64_fernet_key),
+]
+
+def _validate_nonce(value: str) -> int:
+    return int(value, base=16)
+
+
+type _MessageNonce = Annotated[
+    int,
+    BeforeValidator(_validate_nonce),
 ]
 
 class ContactOutputSchema(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
         revalidate_instances='always',
+        arbitrary_types_allowed=True,
     )
     id: int
     name: str
-    public_verification_key: PublicVerificationKey
-    private_ephemeral_key: PrivateEphemeralKey | None = None
-    fernet_key: FernetKey | None = None
+    public_verification_key: _PublicVerificationKey
+    private_ephemeral_key: _PrivateEphemeralKey | None = None
+    fernet_key: _FernetKey | None = None
 
 class MessageOutputSchema(BaseModel):
     model_config = ConfigDict(
@@ -69,26 +79,6 @@ class MessageOutputSchema(BaseModel):
     id: int
     text: str
     timestamp: datetime
+    message_type: str
+    nonce: _MessageNonce
     contact_id: int
-
-
-
-# # Just put it all in models.py!!!!
-# # Ugh, I hate this. Going for a rush walk
-
-# import binascii
-
-# from base64 import urlsafe_b64decode, urlsafe_b64encode
-# from datetime import datetime
-# from typing import Annotated, Any
-
-# from pydantic import BaseModel, BeforeValidator
-
-# from model_types import StrFromBase64
-
-# class ContactSchema(BaseModel):
-#     id: int
-#     name: str
-#     public_key: StrFromBase64
-#     ephemeral_key: StrFromBase64 | None = None
-#     fernet_key: StrFromBase64 | None = None
