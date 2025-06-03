@@ -11,7 +11,10 @@ from tkinter import ttk
 
 import requests
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
@@ -20,7 +23,6 @@ from database.models import Contact, Message, MessageType
 from database.schemas.input import MessageInputSchema
 from database.schemas.output import (
     ContactFernetOutputSchema,
-    ContactOutputSchema,
     MessageOutputSchema,
 )
 from server.schemas.requests import PostMessageRequest
@@ -32,14 +34,18 @@ class MessageWindow(tk.Toplevel):
             master: tk.Widget | tk.Tk | tk.Toplevel,
             engine: Engine,
             signature_key: Ed25519PrivateKey,
-            contact: ContactOutputSchema,
+            contact_id: int,
+            contact_name: str,
+            contact_public_key: Ed25519PublicKey,
             post_message_url: str = 'http://127.0.0.1:8000/messages/send'
         ):
         # Call the parent constructor and store key values.
         super().__init__(master)
         self.engine = engine
         self.signature_key = signature_key
-        self.contact = contact
+        self.contact_id = contact_id
+        self.contact_name = contact_name
+        self.contact_public_key = contact_public_key
         self.post_message_url = post_message_url
         self.last_message_timestamp = datetime.min
         self.loaded_nonces: list[int] = []
@@ -74,7 +80,7 @@ class MessageWindow(tk.Toplevel):
             statement = select(
                 Message,
             ).where(
-                Message.contact_id == self.contact.id,
+                Message.contact_id == self.contact_id,
             ).where(
                 Message.timestamp >= self.last_message_timestamp,
             ).where(
@@ -91,7 +97,7 @@ class MessageWindow(tk.Toplevel):
                 if message.message_type == MessageType.SENT:
                     author_label.config(text='You:')
                 else:
-                    author_label.config(text=f'{self.contact.name}:')
+                    author_label.config(text=f'{self.contact_name}:')
                 author_label.grid(
                     column=0,
                     row=len(self.loaded_nonces),
@@ -129,14 +135,14 @@ class MessageWindow(tk.Toplevel):
             # Retrieve the current symmetric key.
             with Session(self.engine) as session:
                 contact = ContactFernetOutputSchema.model_validate(
-                    session.get(Contact, self.contact.id),
+                    session.get(Contact, self.contact_id),
                 )
             if contact.fernet_key is not None:
                 ciphertext = contact.fernet_key.encrypt(message_text.encode())
                 data = PostMessageRequest.model_validate(
                     {
                         'public_key': self.signature_key.public_key(),
-                        'recipient_public_key': self.contact.public_verification_key,
+                        'recipient_public_key': self.contact_public_key,
                         'encrypted_text': ciphertext,
                         'signature': self.signature_key.sign(ciphertext),
                     }
@@ -152,7 +158,7 @@ class MessageWindow(tk.Toplevel):
                             text=message_text,
                             timestamp=response.timestamp,
                             message_type=MessageType.SENT,
-                            contact_id=self.contact.id,
+                            contact_id=self.contact_id,
                             nonce=response.nonce,
                         )
                         session.add(Message(**message.model_dump()))
