@@ -66,6 +66,7 @@ class Message(Base):
     )
     nonce: Mapped[str] = mapped_column(
         String(32),
+        unique=True,
     )
     contact_id: Mapped[int] = mapped_column(
         ForeignKey(
