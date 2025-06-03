@@ -59,6 +59,10 @@ type _MessageNonce = Annotated[
     BeforeValidator(_validate_nonce),
 ]
 
+class ContactFernetOutputSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    fernet_key: _FernetKey | None = None
+
 class ContactOutputSchema(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
