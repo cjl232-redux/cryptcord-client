@@ -19,12 +19,12 @@ class Contact(Base):
         unique=True,
         nullable=False,
     )
-    public_verification_key: Mapped[str] = mapped_column(
+    public_key: Mapped[str] = mapped_column(
         String(44),
         unique=True,
         nullable=False,
     )
-    private_ephemeral_key: Mapped[str] = mapped_column(
+    ephemeral_key: Mapped[str] = mapped_column(
         String(44),
         nullable=True,
     )

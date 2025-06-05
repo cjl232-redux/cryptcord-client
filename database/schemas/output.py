@@ -35,12 +35,12 @@ def _validate_b64_fernet_key(value: str) -> Fernet:
     except ValueError:
         raise ValueError('Value must have an unencoded length of 32 bytes')
 
-type _PublicVerificationKey = Annotated[
+type _VerificationKey = Annotated[
     Ed25519PublicKey,
     BeforeValidator(validate_b64_verification_key),
 ]
 
-type _PrivateEphemeralKey = Annotated[
+type _EphemeralKey = Annotated[
     X25519PrivateKey,
     BeforeValidator(_validate_b64_ephemeral_key),
 ]
@@ -71,8 +71,8 @@ class ContactOutputSchema(BaseModel):
     )
     id: int
     name: str
-    public_verification_key: _PublicVerificationKey
-    private_ephemeral_key: _PrivateEphemeralKey | None = None
+    public_key: _VerificationKey
+    ephemeral_key: _EphemeralKey | None = None
     fernet_key: _FernetKey | None = None
 
 class MessageOutputSchema(BaseModel):
