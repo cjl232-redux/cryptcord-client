@@ -1,3 +1,25 @@
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+import logging
+
+logging.basicConfig()
+logger = logging.getLogger("sqlalchemy.explain")
+logger.setLevel(logging.INFO)
+
+def explain_query(conn, cursor, statement, parameters, context, executemany):
+    if statement.lstrip().upper().startswith("SELECT"):
+        try:
+            explain_stmt = f"EXPLAIN QUERY PLAN {statement}"
+            cursor.execute(explain_stmt, parameters)
+            plan = cursor.fetchall()
+            logger.info("Query: %s", statement)
+            logger.info("Parameters: %s", parameters)
+            logger.info("EXPLAIN plan:")
+            for row in plan:
+                logger.info(row)
+        except Exception as e:
+            logger.warning("EXPLAIN failed: %s", e)
+
 # Pass through contact dict
 # Need to pass through the network connection handler too - OLD
 
@@ -57,6 +79,7 @@ class Application(tk.Tk):
         try:
             # Attempt to start the engine with the provided url.
             self.engine = create_engine(database_url, echo=False)
+            event.listen(self.engine, "before_cursor_execute", explain_query)
         except:
             # If an exception is raised, terminate with a message.
             messagebox.showerror(
