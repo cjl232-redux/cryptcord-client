@@ -4,7 +4,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from database.models import Contact, Message
-from database.schemas.outputs import ContactSchema
+from database.schemas.output import ContactSchema
 
 @dataclass
 class ContactData:
