@@ -17,10 +17,10 @@ from sqlalchemy.orm import Session
 from app_components.body import Body
 from app_components.dialogs.private_key_dialogs import SignatureKeyDialog
 from app_components.dialogs.server_dialogs import ServerDialog
-from app_components.tasks import TaskManager
-from app_components import server_interface
+#from app_components.tasks import TaskManager
+#from app_components import server_interface
 from database import models
-from sideline import operations
+#from sideline import operations
 
 SETTINGS_FILE_PATH = 'settings.yaml'
 
@@ -72,6 +72,7 @@ class Application(tk.Tk):
         # TODO encryption of database according to private key
 
         # Ensure the database has the required tables.
+        #models.Base.metadata.drop_all(self.engine)
         models.Base.metadata.create_all(self.engine)
 
         # Load the user's signature key via a custom dialog.
@@ -126,12 +127,12 @@ class Application(tk.Tk):
             yaml.safe_dump(settings, file)
 
         # Set up the task manager.
-        self.task_manager = TaskManager(
-            master=self,
-            engine=self.engine,
-            signature_key=self.signature_key,
-            frequency_ms=300,
-        )
+        # self.task_manager = TaskManager(
+        #     master=self,
+        #     engine=self.engine,
+        #     signature_key=self.signature_key,
+        #     frequency_ms=300,
+        # )
 
         # Test
         # from base64 import b64encode

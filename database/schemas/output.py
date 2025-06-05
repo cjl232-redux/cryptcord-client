@@ -9,7 +9,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from pydantic import BeforeValidator, BaseModel, ConfigDict
 
-def validate_b64_verification_key(value: str) -> Ed25519PublicKey:
+def _validate_b64(value: str) -> str:
+    try:
+        return urlsafe_b64encode(urlsafe_b64decode(value)).decode()
+    except binascii.Error:
+        raise ValueError('Value is not valid Base64')
+
+def _validate_b64_verification_key(value: str) -> Ed25519PublicKey:
     try:
         raw_bytes = urlsafe_b64decode(value)
         return Ed25519PublicKey.from_public_bytes(raw_bytes)
@@ -35,9 +41,14 @@ def _validate_b64_fernet_key(value: str) -> Fernet:
     except ValueError:
         raise ValueError('Value must have an unencoded length of 32 bytes')
 
+type _Base64String = Annotated[
+    str,
+    BeforeValidator(_validate_b64),
+]
+
 type _VerificationKey = Annotated[
     Ed25519PublicKey,
-    BeforeValidator(validate_b64_verification_key),
+    BeforeValidator(_validate_b64_verification_key),
 ]
 
 type _EphemeralKey = Annotated[
@@ -60,7 +71,10 @@ type _MessageNonce = Annotated[
 ]
 
 class ContactFernetOutputSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+    )
     fernet_key: _FernetKey | None = None
 
 class ContactOutputSchema(BaseModel):
@@ -71,9 +85,19 @@ class ContactOutputSchema(BaseModel):
     )
     id: int
     name: str
-    public_key: _VerificationKey
+    verification_key: _VerificationKey
     ephemeral_key: _EphemeralKey | None = None
     fernet_key: _FernetKey | None = None
+
+class ContactOutputSimplifiedSchema(BaseModel):
+    """Retrieves the name and key of a contact in string form."""
+    model_config = ConfigDict(
+        from_attributes=True,
+        revalidate_instances='always',
+        arbitrary_types_allowed=True,
+    )
+    name: str
+    verification_key: _Base64String
 
 class MessageOutputSchema(BaseModel):
     model_config = ConfigDict(

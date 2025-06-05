@@ -65,8 +65,8 @@ class ContactInputSchema(BaseModel):
         'arbitrary_types_allowed': True,
     }
     name: str
-    public_key: _EllipticCurveKey
-    private_ephemeral_key: _EllipticCurveKey | None = None
+    verification_key: _EllipticCurveKey
+    ephemeral_key: _EllipticCurveKey | None = None
     fernet_key: _FernetKey | None = None
 
 class MessageInputSchema(BaseModel):

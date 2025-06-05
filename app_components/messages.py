@@ -36,7 +36,7 @@ class MessageWindow(tk.Toplevel):
             signature_key: Ed25519PrivateKey,
             contact_id: int,
             contact_name: str,
-            contact_public_key: Ed25519PublicKey,
+            contact_verification_key: Ed25519PublicKey,
             post_message_url: str = 'http://127.0.0.1:8000/messages/send'
         ):
         # Call the parent constructor and store key values.
@@ -45,10 +45,10 @@ class MessageWindow(tk.Toplevel):
         self.signature_key = signature_key
         self.contact_id = contact_id
         self.contact_name = contact_name
-        self.contact_public_key = contact_public_key
+        self.contact_verification_key = contact_verification_key
         self.post_message_url = post_message_url
         self.last_message_timestamp = datetime.min
-        self.loaded_nonces: list[int] = []
+        self.loaded_nonces: set[int] = set()
         
         # Set up and place the message log.
         self.message_log = ScrollableFrame(self)
@@ -83,8 +83,6 @@ class MessageWindow(tk.Toplevel):
                 Message.contact_id == self.contact_id,
             ).where(
                 Message.timestamp >= self.last_message_timestamp,
-            ).where(
-                Message.nonce.not_in(self.loaded_nonces),
             ).order_by(
                 Message.timestamp,
             )
@@ -93,33 +91,34 @@ class MessageWindow(tk.Toplevel):
                 for message in session.scalars(statement)
             )
             for message in messages:
-                author_label = ttk.Label(self.message_log.interior)
-                if message.message_type == MessageType.SENT:
-                    author_label.config(text='You:')
-                else:
-                    author_label.config(text=f'{self.contact_name}:')
-                author_label.grid(
-                    column=0,
-                    row=len(self.loaded_nonces),
-                    sticky='nw',
-                    padx=(10, 5),
-                    pady=(10 if len(self.loaded_nonces) == 0 else 5, 5),
-                )
-                message_label = ttk.Label(
-                    master=self.message_log.interior,
-                    text=message.text,
-                    wraplength=480,
-                    anchor='nw',
-                )
-                message_label.grid(
-                    column=0,
-                    row=len(self.loaded_nonces),
-                    sticky='nsew',
-                    padx=(5, 10),
-                    pady=(10 if len(self.loaded_nonces) == 0 else 5, 5),
-                )
-                self.loaded_nonces.append(message.nonce)
-                self.last_message_timestamp = message.timestamp
+                if message.nonce not in self.loaded_nonces:
+                    author_label = ttk.Label(self.message_log.interior)
+                    if message.message_type == MessageType.SENT.value:
+                        author_label.config(text='You:')
+                    else:
+                        author_label.config(text=f'{self.contact_name}:')
+                    author_label.grid(
+                        column=0,
+                        row=len(self.loaded_nonces),
+                        sticky='nw',
+                        padx=(10, 5),
+                        pady=(10 if len(self.loaded_nonces) == 0 else 5, 5),
+                    )
+                    message_label = ttk.Label(
+                        master=self.message_log.interior,
+                        text=message.text,
+                        wraplength=480,
+                        anchor='nw',
+                    )
+                    message_label.grid(
+                        column=1,
+                        row=len(self.loaded_nonces),
+                        sticky='nsew',
+                        padx=(5, 10),
+                        pady=(10 if len(self.loaded_nonces) == 0 else 5, 5),
+                    )
+                    self.loaded_nonces.add(message.nonce)
+                    self.last_message_timestamp = message.timestamp
     
     def _post_message(self, *_):
         """
@@ -142,7 +141,7 @@ class MessageWindow(tk.Toplevel):
                 data = PostMessageRequest.model_validate(
                     {
                         'public_key': self.signature_key.public_key(),
-                        'recipient_public_key': self.contact_public_key,
+                        'recipient_public_key': self.contact_verification_key,
                         'encrypted_text': ciphertext,
                         'signature': self.signature_key.sign(ciphertext),
                     }
@@ -152,22 +151,30 @@ class MessageWindow(tk.Toplevel):
                     json=data.model_dump(),
                 )
                 if response.status_code == 200:
-                    response = PostMessageResponse.model_validate(**response.json())
+                    response = PostMessageResponse.model_validate(
+                        response.json(),
+                    )
                     with Session(self.engine) as session:
                         message = MessageInputSchema(
                             text=message_text,
-                            timestamp=response.timestamp,
+                            timestamp=response.data.timestamp,
                             message_type=MessageType.SENT,
                             contact_id=self.contact_id,
-                            nonce=response.nonce,
+                            nonce=response.data.nonce,
                         )
                         session.add(Message(**message.model_dump()))
-                        session.commit()                    
+                        session.commit()
+                    yview = self.message_log.canvas.yview()
+                    self._update_message_log()
+                    if yview[1] == 1.0:
+                        self.after_idle(
+                            lambda: self.message_log.canvas.yview_moveto(1.0),
+                        )
                 else:
-                    pass
+                    print('connection failed')
                     # Error
             else:
-                pass
+                print('no fernet key')
                 # Error message
         self.input_box.delete('1.0', tk.END)
         return 'break'

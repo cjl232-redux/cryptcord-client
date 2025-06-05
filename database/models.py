@@ -19,7 +19,7 @@ class Contact(Base):
         unique=True,
         nullable=False,
     )
-    public_key: Mapped[str] = mapped_column(
+    verification_key: Mapped[str] = mapped_column(
         String(44),
         unique=True,
         nullable=False,
@@ -31,6 +31,7 @@ class Contact(Base):
     fernet_key: Mapped[str] = mapped_column(
         String(44),
         nullable=True,
+        default='Aof4XwsVKqrkKIjJrOwNfqg76QF692tIMNhHEzoy8zE=',
     )
     messages: Mapped[list['Message']] = relationship(
         back_populates='contact',

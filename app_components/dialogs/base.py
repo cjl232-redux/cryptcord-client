@@ -3,6 +3,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Any, Callable
 
+from pydantic import BaseModel
+
 from app_components.dialogs import fields
 
 # @dataclass
@@ -15,16 +17,18 @@ type Validator = Callable[[dict[str, str]], str | None]
 class Dialog(tk.Toplevel):
     def __init__(
             self,
-            master: tk.Widget | ttk.Widget | tk.Tk | tk.Toplevel,
+            master: tk.Widget | tk.Tk | tk.Toplevel,
             title: str,
             description_kwargs: dict[str, Any] | None = None,
             fields: dict[str, fields.Field] | None = None,
             validators: list[Validator] | None = None,
             x_padding: int = 6,
             y_padding: int = 2,
+            input_schema: type[BaseModel] | None = None,
         ):
         # Call the base constructor.
         super().__init__(master)
+        self.input_schema = input_schema
 
         # Fill in default lists and dicts, then store the validators.
         if description_kwargs is None:
@@ -138,8 +142,14 @@ class Dialog(tk.Toplevel):
             )
             self.result = None
         else:
-            self.result = result
-            self.destroy()
+            try:
+                if self.input_schema is not None:
+                    self.result = self.input_schema.model_validate(result)
+                else:
+                    self.result = result
+                self.destroy()
+            except Exception as e:
+                messagebox.showerror(title='Validation Error', message=str(e))
 
 
     def _cancel(self, *_):

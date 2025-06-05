@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from app_components.dialogs.base import Dialog
 from app_components.dialogs.fields import ButtonData, Field
+from database.schemas.input import ContactInputSchema
 
 class PublicKeyField(Field):
     def __init__(
@@ -56,16 +57,17 @@ class AddContactDialog(Dialog):
             self,
             master: tk.Widget | ttk.Widget | tk.Tk | tk.Toplevel,
             used_names: set[str],
-            used_public_keys: set[str],
+            used_public_keys: set[Ed25519PublicKey],
             title: str = 'Add Contact',
         ):
         super().__init__(
             master=master,
             title=title,
+            input_schema=ContactInputSchema,
             description_kwargs=self._description_kwargs,
             fields={
                 'name': Field(name='Name'),
-                'public_key': PublicKeyField(name='Public Key'),
+                'verification_key': PublicKeyField(name='Public Key'),
             },
             validators=[
                 self._validate_name,
@@ -93,7 +95,7 @@ class AddContactDialog(Dialog):
             return 'The value provided for the name field is already in use.'
     
     def _validate_key(self, values: dict[str, str]) -> str | None:
-        key = values.get('public_key', '')
+        key = values.get('verification_key', '')
         if not key:
             return 'A value is required for the key field.'
         elif key in self.used_public_keys:
@@ -106,4 +108,3 @@ class AddContactDialog(Dialog):
                 'The value provided for the public key field is not a valid '
                 'Base64 representation of a 32-byte key.'
             )
-        values['public_key'] = urlsafe_b64encode(urlsafe_b64decode(key)).decode()

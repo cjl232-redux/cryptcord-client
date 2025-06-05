@@ -3,7 +3,11 @@ from typing import Annotated
 
 from pydantic import BaseModel, StringConstraints
 
-class PostMessageResponse(BaseModel):
+class BaseResponse(BaseModel):
+    status: str
+    message: str
+
+class _PostMessageResponseData(BaseModel):
     timestamp: datetime
     nonce: Annotated[
         str,
@@ -15,3 +19,6 @@ class PostMessageResponse(BaseModel):
             pattern='^[A-Fa-f0-9]*$',
         ),
     ]
+
+class PostMessageResponse(BaseResponse):
+    data: _PostMessageResponseData

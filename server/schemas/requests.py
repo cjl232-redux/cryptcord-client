@@ -7,15 +7,23 @@ from pydantic import BaseModel, BeforeValidator
 def _validate_public_key(value: Ed25519PublicKey) -> str:
     return urlsafe_b64encode(value.public_bytes_raw()).decode()
 
-type _PublicKey = Annotated[
-    str,
-    BeforeValidator(_validate_public_key),
-]
+def _validate_message(value: bytes) -> str:
+    return value.decode()
 
 def _validate_signature(value: bytes) -> str:
     if len(value) != 64:
         raise ValueError('The signature must be 64 bytes in length')
     return urlsafe_b64encode(value).decode()
+
+type _PublicKey = Annotated[
+    str,
+    BeforeValidator(_validate_public_key),
+]
+
+type _Message = Annotated[
+    str,
+    BeforeValidator(_validate_message),
+]
 
 type _Signature = Annotated[
     str,
@@ -27,8 +35,8 @@ class _BaseRequest(BaseModel):
 
 class PostMessageRequest(_BaseRequest):
     recipient_public_key: _PublicKey
-    encrypted_text: str
-    signature: str
+    encrypted_text: _Message
+    signature: _Signature
 
 
 
