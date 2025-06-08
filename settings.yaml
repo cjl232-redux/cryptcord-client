@@ -1,3 +1,0 @@
-database: local_database.db
-database_url: sqlite:///database.db
-signature_key_path: D:/Coding/cryptcord/unencrypted_private_key.pem
