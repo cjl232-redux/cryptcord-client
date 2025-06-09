@@ -1,157 +1,270 @@
+# Use NOTIMPLEMENTEDERROR
+# TODO work out how to type hint providing a default model instance. Maybe use isinstance with the registered type.
+
 import tkinter as tk
 
+from dataclasses import dataclass
 from tkinter import messagebox, ttk
-from typing import Any, Callable
+from typing import Callable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+from pydantic_core import PydanticUndefined
 
-from app_components.dialogs import fields
+from settings import settings
 
-# @dataclass
-# class DescriptionData:
-#     text: str
-#     wrap_length: int | None = ...
+def _print_value(_: tk.Entry, v: tk.StringVar):
+    print(v.get())
 
-type Validator = Callable[[dict[str, str]], str | None]
+@dataclass
+class FieldButtonData:
+    text: str = 'Click Me!'
+    callable: Callable[[tk.Entry, tk.StringVar], None] = _print_value
 
-class Dialog(tk.Toplevel):
-    def __init__(
-            self,
-            master: tk.Widget | tk.Tk | tk.Toplevel,
-            title: str,
-            description_kwargs: dict[str, Any] | None = None,
-            fields: dict[str, fields.Field] | None = None,
-            validators: list[Validator] | None = None,
-            x_padding: int = 6,
-            y_padding: int = 2,
-            input_schema: type[BaseModel] | None = None,
-        ):
-        # Call the base constructor.
+@dataclass
+class FieldPropertiesData:
+    hidden: bool = True
+
+
+class _DescriptionFrame(ttk.Frame):
+    def __init__(self, master: 'BaseDialog', text: str):
         super().__init__(master)
-        self.input_schema = input_schema
-
-        # Fill in default lists and dicts, then store the validators.
-        if description_kwargs is None:
-            description_kwargs = {}
-        if fields is None:
-            fields = {}
-        if validators is None:
-            validators = []
-        self.validators = validators
-
-        # Grab all incoming events and set window properties.
-        self.grab_set()
-        self.title(title)
-        self.protocol('WM_DELETE_WINDOW', self._cancel)
-        
-        # If provided, place the description text.
-        if 'text' in description_kwargs:
-            label = ttk.Label(self, **description_kwargs)
-            label.grid(
+        self.label = ttk.Label(
+            self,
+            text=text,
+            anchor='nw',
+            wraplength=settings.graphics.dialogs.description_wrap_length,
+        )
+        if text:
+            self.label.grid(
                 column=0,
                 row=0,
-                columnspan=3,
-                sticky='new',
-                padx=x_padding,
-                pady=(y_padding, y_padding // 2),
+                sticky='nsew',
+                padx=settings.graphics.dialogs.horizontal_padding,
+                pady=(settings.graphics.dialogs.vertical_padding, 0),
             )
+            self.label.bind('<Configure>', self._adjust_wrap)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+    
+    def _adjust_wrap(self, event: tk.Event): # type: ignore
+        self.label.config(wraplength=event.width)
 
-        # Create and place all the relevant widgets.
-        self.stringvars: dict[str, tk.StringVar] = {}
-        start_row = int('text' in description_kwargs)
-        for row, (key, field) in enumerate(fields.items(), start_row):
-            label, entry, button, var = field.load_widgets(self)
-            entry.bind('<Return>', lambda _: self._submit())
-            if row == start_row:
-                entry.focus()
-            row_ypad = (
-                y_padding if row == 0 else y_padding // 2,
-                y_padding // 2,
+
+class _FieldsFrame(ttk.Frame):
+    def __init__(self, master: 'BaseDialog', model: type[BaseModel]):
+        # Call the base constructor.
+        super().__init__(master)
+        # Alias the padding settings.
+        horizontal_padding = settings.graphics.dialogs.horizontal_padding
+        vertical_padding = settings.graphics.dialogs.vertical_padding
+        field_padding = settings.graphics.dialogs.field_padding
+        # Create a dict to hold variables and a list to hold entry widgets.
+        self.entries: list[ttk.Entry] = list()
+        self.variables: dict[str, tk.StringVar] = dict()
+        # Create the body for each model field.
+        for i, (key, value) in enumerate(model.model_fields.items()):
+            label = ttk.Label(
+                master=self,
+                text=key,
+                anchor='sw',
+                font=(
+                    settings.graphics.font_family,
+                    settings.graphics.font_size,
+                    'bold',
+                ),
             )
+            if value.title:
+                label.config(text=f'{value.title}:')
             label.grid(
                 column=0,
-                row=row,
+                row=i,
                 sticky='w',
-                padx=(x_padding, x_padding // 2),
-                pady=row_ypad,
+                padx=horizontal_padding,
+                pady=(
+                    vertical_padding if i == 0 else field_padding,
+                    settings.graphics.dialogs.field_label_offset,
+                ),
             )
+            self.variables[key] = tk.StringVar(
+                self,
+                value.default if value.default != PydanticUndefined else None,
+            )
+            entry = ttk.Entry(self, textvariable=self.variables[key])
             entry.grid(
                 column=1,
-                row=row,
+                row=i,
                 sticky='ew',
-                padx=(x_padding // 2, x_padding // 2),
-                pady=row_ypad,
+                padx=horizontal_padding,
             )
-            if button is not None:
-                button.grid(
-                    column=2,
-                    row=row,
-                    sticky='ew',
-                    padx=(x_padding // 2, x_padding),
-                    pady=row_ypad,
-                )
-            self.stringvars[key] = var
-
-        # Add in command buttons.
-        end_row = start_row + len(self.stringvars)
-        end_row_ypad = (
-            y_padding if end_row == 0 else y_padding // 2,
-            y_padding,
-        )
-        submit_button = ttk.Button(self, text='Submit', command=self._submit)
-        submit_button.grid(
-            column=1,
-            row=end_row,
-            sticky='e',
-            padx=(0, x_padding // 2),
-            pady=end_row_ypad,
-        )
-        submit_button.bind('<Return>', lambda _: self._submit())
-        cancel_button = ttk.Button(self, text='Cancel', command=self._cancel)
-        cancel_button.grid(
-            column=2,
-            row=end_row,
-            sticky='ew',
-            padx=(x_padding // 2, x_padding),
-            pady=end_row_ypad,
-        )
-        cancel_button.bind('<Return>', lambda _: self._cancel())
-
-        # Configure the grid.
+            if i == 0:
+                entry.focus()
+            self.entries.append(entry)
+            for metadata in value.metadata:
+                if isinstance(metadata, FieldPropertiesData):
+                    if metadata.hidden:
+                        entry.config(show='●')
+                elif isinstance(metadata, FieldButtonData):
+                    var = self.variables[key]
+                    button = ttk.Button(
+                        master=self,
+                        text=metadata.text,
+                        command=(
+                            lambda e=entry, v=var:
+                                metadata.callable(e, v)
+                        ),
+                    )
+                    button.bind(
+                        sequence='<Return>',
+                        func=(
+                            lambda *_, e=entry, v=var:
+                                metadata.callable(e, v)
+                        ),
+                    )
+                    button.grid(
+                        column=2,
+                        row=i,
+                        sticky='ew',
+                        padx=(0, horizontal_padding),
+                    )
+        # Set grid parameters.
         self.columnconfigure(1, weight=1)
 
 
-    def _submit(self, *_):
-        result = {x: y.get() for x, y in self.stringvars.items()}
-        errors: list[str] = []
-        for validator in self.validators:
-            message = validator(result)
-            if message:
-                errors.append(message)
-        if len(errors) == 1:
-            messagebox.showerror(
-                title='Validation Error',
-                message=errors[0],
-            )
-            self.result = None
-        elif errors:
-            message = f'The following errors occured:\n{'\n• '.join(errors)}'
-            messagebox.showerror(
-                title='Validation Error',
-                message=message,
-            )
-            self.result = None
-        else:
-            try:
-                if self.input_schema is not None:
-                    self.result = self.input_schema.model_validate(result)
-                else:
-                    self.result = result
-                self.destroy()
-            except Exception as e:
-                messagebox.showerror(title='Validation Error', message=str(e))
+class _ButtonFrame(ttk.Frame):
+    def __init__(self, master: 'BaseDialog'):
+        super().__init__(master)
+        self.submit_button = ttk.Button(self, text='Submit')
+        self.submit_button.grid(
+            column=0,
+            row=0,
+            sticky='w',
+            padx=settings.graphics.dialogs.horizontal_padding,
+            pady=settings.graphics.dialogs.vertical_padding,
+        )
+        self.cancel_button = ttk.Button(self, text='Cancel')
+        self.cancel_button.grid(
+            column=1,
+            row=0,
+            sticky='w',
+            padx=(0, settings.graphics.dialogs.horizontal_padding),
+            pady=settings.graphics.dialogs.vertical_padding,
+        )        
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
 
+
+class BaseDialog(tk.Toplevel):
+    TITLE: str = 'Dialog'
+    DESCRIPTION: str = ''
+    VALIDATION_MODEL: type[BaseModel] | None = None
+
+    def __init__(self, master: tk.Widget | tk.Tk | tk.Toplevel):
+        # Call the base constructor.
+        super().__init__(master)
+        # Confirm there is a validation model.
+        if self.VALIDATION_MODEL is None:
+            raise NotImplementedError(
+                'Subclasses must implement a VALIDATION_MODEL attribute.',
+            )
+        # Set window properties and disable resizing.
+        self.title(self.TITLE)
+        self.protocol('WM_DELETE_WINDOW', self._cancel)
+        #self.resizable(False, False)
+        # Focus the window and grab all incoming events.
+        self.focus()
+        self.grab_set()
+        # Create and place the body elements.
+        description_frame = _DescriptionFrame(self, self.DESCRIPTION)
+        description_frame.grid(column=0, row=0, sticky='nsew')
+        self._fields_frame = _FieldsFrame(self, self.VALIDATION_MODEL)
+        self._fields_frame.grid(column=0, row=1, sticky='nsew')
+        button_frame = _ButtonFrame(self)
+        button_frame.submit_button.config(command=self._submit)
+        button_frame.cancel_button.config(command=self._cancel)
+        button_frame.grid(column=0, row=2, sticky='nsew')
+        # Bind the enter key to the submit function for all fields.
+        for entry in self._fields_frame.entries:
+            entry.bind('<Return>', self._submit)
+        # Bind the enter key for the submit and cancel buttons.
+        button_frame.submit_button.bind('<Return>', self._submit)
+        button_frame.cancel_button.bind('<Return>', self._cancel)
+        # Set grid parameters.
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+    
+    def _submit(self, *_):
+        assert self.VALIDATION_MODEL is not None
+        values = {
+            key: value.get()
+            for key, value in self._fields_frame.variables.items()
+            if value.get()
+        }
+        try:
+            self.result = self.VALIDATION_MODEL.model_validate(values)
+            self.destroy()
+        except ValidationError as e:
+            text = 'The following errors occured:'
+            for error in e.errors():
+                error['msg'] = error['msg'].replace('Value error, ', '')
+                text += (
+                    f'\n{str(error['loc'][0]).replace('_', ' ').title()}: '
+                    f'{error['msg'][0].lower()}{error['msg'][1:]}.'
+                )
+            messagebox.showerror('Error', text)
 
     def _cancel(self, *_):
         self.result = None
         self.destroy()
+
+
+if __name__ == '__main__':
+
+    from typing import Annotated
+    from pydantic import Field, AfterValidator
+    def minlength(value: str):
+        if len(value) < 3:
+            raise ValueError('Value must be at least 3 characters long')
+        return value
+    class TestModel(BaseModel):
+        name: Annotated[str, Field(title='Name'), FieldButtonData(), AfterValidator(minlength)]
+        value: int
+        description: Annotated[str, Field(title='Description'), FieldButtonData()]
+
+
+    class ChildDialog(BaseDialog):
+        def __init__(self, master: tk.Widget | tk.Tk | tk.Toplevel):
+            super().__init__(master)
+
+        TITLE = 'Child'
+        DESCRIPTION = (
+            'Lorem ipsum dolor sit amet, consectetur adipiscing elit. In tempor '
+            'lorem orci, at pretium ex porta sit amet. Proin augue tellus, '
+            'euismod eu leo imperdiet, pulvinar fermentum mauris. Maecenas quis '
+            'tincidunt dui, eu tincidunt magna. Donec massa urna, posuere in orci '
+            'at, dapibus mattis lacus. Quisque pharetra dictum leo, ac venenatis '
+            'ligula vehicula sit amet. In suscipit lorem justo, nec semper odio '
+            'auctor non. Nam et volutpat velit. Morbi a felis eget libero '
+            'placerat dictum. Quisque non justo at lacus auctor pharetra ut '
+            'faucibus augue. In dapibus sem aliquet, vestibulum justo in, '
+            'vehicula leo. Integer posuere lorem sed dui venenatis fringilla. '
+            'Morbi gravida, eros in fermentum congue, elit ligula commodo nisi, '
+            'quis dictum tellus urna vel nisl. Mauris vestibulum sollicitudin '
+            'nunc ut lacinia.'
+        )
+        VALIDATION_MODEL = TestModel
+
+    class App(tk.Tk):
+        def __init__(self):
+            super().__init__()
+            ttk.Button(self, text='Click Me', command=self._open_dialog).pack()
+        
+        def _open_dialog(self, *_):
+            dialog = ChildDialog(self)
+            self.wait_window(dialog)
+            print(dialog.result)
+
+    app = App()
+
+    boldStyle = ttk.Style(app)
+    boldStyle.configure("Bold.TLabel", size = 10, weight = "bold")
+    app.mainloop()
