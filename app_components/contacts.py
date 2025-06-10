@@ -18,7 +18,6 @@ class _ExistingContactsFrame(ScrollableFrame):
             master: ttk.Frame,
             engine: Engine,
             signature_key: ed25519.Ed25519PrivateKey,
-            settings: SettingsSchema,
             scroll_speed: int = 5,
             *args: tuple[Any],
             **kwargs: dict[str, Any],
@@ -26,7 +25,6 @@ class _ExistingContactsFrame(ScrollableFrame):
         super().__init__(master, scroll_speed, *args, **kwargs)
         self.engine = engine
         self.signature_key = signature_key
-        self.settings = settings
         self.message_windows: dict[int, MessageWindow] = {}
 
     def reload(self):
@@ -109,7 +107,7 @@ class ContactsPane(ttk.Frame):
             master: ttk.Notebook,
             engine: Engine,
             signature_key: ed25519.Ed25519PrivateKey,
-            settings: SettingsSchema,
+            #settings: SettingsSchema,
         ):
         super().__init__(master)
         self.engine = engine
@@ -118,7 +116,6 @@ class ContactsPane(ttk.Frame):
             master=self,
             engine=engine,
             signature_key=signature_key,
-            settings=settings,
         )
         self.existing_contacts_frame.grid(
             column=0,
@@ -159,14 +156,14 @@ class ContactsPane(ttk.Frame):
         # Retrieve existing names and keys.
         with Session(self.engine) as session:
             used_names: set[str] = set()
-            used_public_keys: set[ed25519.Ed25519PublicKey] = set()
+            used_public_keys: set[bytes] = set()
             existing_contacts = (
                 ContactOutputSchema.model_validate(contact)
                 for contact in session.scalars(select(Contact))
             )
             for contact in existing_contacts:
                 used_names.add(contact.name)
-                used_public_keys.add(contact.verification_key)
+                used_public_keys.add(contact.public_key.public_bytes_raw())
         # Construct the dialog and await a result.
         dialog = AddContactDialog(
             master=self,
