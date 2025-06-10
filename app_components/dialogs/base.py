@@ -5,7 +5,7 @@ import tkinter as tk
 
 from dataclasses import dataclass
 from tkinter import messagebox, ttk
-from typing import Callable
+from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 from pydantic_core import PydanticUndefined
@@ -26,7 +26,7 @@ class FieldPropertiesData:
 
 
 class _DescriptionFrame(ttk.Frame):
-    def __init__(self, master: 'BaseDialog', text: str):
+    def __init__(self, master: 'BaseDialog[Any]', text: str):
         super().__init__(master)
         self.label = ttk.Label(
             self,
@@ -51,22 +51,23 @@ class _DescriptionFrame(ttk.Frame):
 
 
 class _FieldsFrame(ttk.Frame):
-    def __init__(self, master: 'BaseDialog', model: type[BaseModel]):
+    def __init__(self, master: 'BaseDialog[Any]', model: type[BaseModel]):
         # Call the base constructor.
         super().__init__(master)
         # Alias the padding settings.
         horizontal_padding = settings.graphics.dialogs.horizontal_padding
         vertical_padding = settings.graphics.dialogs.vertical_padding
-        field_padding = settings.graphics.dialogs.field_padding
+        field_padding = settings.graphics.dialogs.field_gap
         # Create a dict to hold variables and a list to hold entry widgets.
         self.entries: list[ttk.Entry] = list()
         self.variables: dict[str, tk.StringVar] = dict()
         # Create the body for each model field.
         for i, (key, value) in enumerate(model.model_fields.items()):
+            row_padding = (vertical_padding if i == 0 else field_padding, 0)
             label = ttk.Label(
                 master=self,
                 text=key,
-                anchor='sw',
+                anchor='w',
                 font=(
                     settings.graphics.font_family,
                     settings.graphics.font_size,
@@ -79,11 +80,8 @@ class _FieldsFrame(ttk.Frame):
                 column=0,
                 row=i,
                 sticky='w',
-                padx=horizontal_padding,
-                pady=(
-                    vertical_padding if i == 0 else field_padding,
-                    settings.graphics.dialogs.field_label_offset,
-                ),
+                padx=(horizontal_padding, 0),
+                pady=row_padding,
             )
             self.variables[key] = tk.StringVar(
                 self,
@@ -95,6 +93,7 @@ class _FieldsFrame(ttk.Frame):
                 row=i,
                 sticky='ew',
                 padx=horizontal_padding,
+                pady=row_padding,
             )
             if i == 0:
                 entry.focus()
@@ -109,14 +108,14 @@ class _FieldsFrame(ttk.Frame):
                         master=self,
                         text=metadata.text,
                         command=(
-                            lambda e=entry, v=var:
+                            lambda e=entry, v=var, metadata=metadata:
                                 metadata.callable(e, v)
                         ),
                     )
                     button.bind(
                         sequence='<Return>',
                         func=(
-                            lambda *_, e=entry, v=var:
+                            lambda *_, e=entry, v=var, metadata=metadata:
                                 metadata.callable(e, v)
                         ),
                     )
@@ -125,13 +124,14 @@ class _FieldsFrame(ttk.Frame):
                         row=i,
                         sticky='ew',
                         padx=(0, horizontal_padding),
+                        pady=row_padding,
                     )
         # Set grid parameters.
         self.columnconfigure(1, weight=1)
 
 
 class _ButtonFrame(ttk.Frame):
-    def __init__(self, master: 'BaseDialog'):
+    def __init__(self, master: 'BaseDialog[Any]'):
         super().__init__(master)
         self.submit_button = ttk.Button(self, text='Submit')
         self.submit_button.grid(
@@ -152,11 +152,10 @@ class _ButtonFrame(ttk.Frame):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
-
-class BaseDialog(tk.Toplevel):
+class BaseDialog[T: BaseModel](tk.Toplevel):
     TITLE: str = 'Dialog'
     DESCRIPTION: str = ''
-    VALIDATION_MODEL: type[BaseModel] | None = None
+    VALIDATION_MODEL: type[T] | None = None
 
     def __init__(self, master: tk.Widget | tk.Tk | tk.Toplevel):
         # Call the base constructor.
@@ -215,56 +214,3 @@ class BaseDialog(tk.Toplevel):
     def _cancel(self, *_):
         self.result = None
         self.destroy()
-
-
-if __name__ == '__main__':
-
-    from typing import Annotated
-    from pydantic import Field, AfterValidator
-    def minlength(value: str):
-        if len(value) < 3:
-            raise ValueError('Value must be at least 3 characters long')
-        return value
-    class TestModel(BaseModel):
-        name: Annotated[str, Field(title='Name'), FieldButtonData(), AfterValidator(minlength)]
-        value: int
-        description: Annotated[str, Field(title='Description'), FieldButtonData()]
-
-
-    class ChildDialog(BaseDialog):
-        def __init__(self, master: tk.Widget | tk.Tk | tk.Toplevel):
-            super().__init__(master)
-
-        TITLE = 'Child'
-        DESCRIPTION = (
-            'Lorem ipsum dolor sit amet, consectetur adipiscing elit. In tempor '
-            'lorem orci, at pretium ex porta sit amet. Proin augue tellus, '
-            'euismod eu leo imperdiet, pulvinar fermentum mauris. Maecenas quis '
-            'tincidunt dui, eu tincidunt magna. Donec massa urna, posuere in orci '
-            'at, dapibus mattis lacus. Quisque pharetra dictum leo, ac venenatis '
-            'ligula vehicula sit amet. In suscipit lorem justo, nec semper odio '
-            'auctor non. Nam et volutpat velit. Morbi a felis eget libero '
-            'placerat dictum. Quisque non justo at lacus auctor pharetra ut '
-            'faucibus augue. In dapibus sem aliquet, vestibulum justo in, '
-            'vehicula leo. Integer posuere lorem sed dui venenatis fringilla. '
-            'Morbi gravida, eros in fermentum congue, elit ligula commodo nisi, '
-            'quis dictum tellus urna vel nisl. Mauris vestibulum sollicitudin '
-            'nunc ut lacinia.'
-        )
-        VALIDATION_MODEL = TestModel
-
-    class App(tk.Tk):
-        def __init__(self):
-            super().__init__()
-            ttk.Button(self, text='Click Me', command=self._open_dialog).pack()
-        
-        def _open_dialog(self, *_):
-            dialog = ChildDialog(self)
-            self.wait_window(dialog)
-            print(dialog.result)
-
-    app = App()
-
-    boldStyle = ttk.Style(app)
-    boldStyle.configure("Bold.TLabel", size = 10, weight = "bold")
-    app.mainloop()
