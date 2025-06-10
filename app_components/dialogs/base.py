@@ -168,7 +168,6 @@ class BaseDialog[T: BaseModel](tk.Toplevel):
         # Set window properties and disable resizing.
         self.title(self.TITLE)
         self.protocol('WM_DELETE_WINDOW', self._cancel)
-        #self.resizable(False, False)
         # Focus the window and grab all incoming events.
         self.focus()
         self.grab_set()
@@ -187,7 +186,7 @@ class BaseDialog[T: BaseModel](tk.Toplevel):
         # Bind the enter key for the submit and cancel buttons.
         button_frame.submit_button.bind('<Return>', self._submit)
         button_frame.cancel_button.bind('<Return>', self._cancel)
-        # Set grid parameters.
+        # Configure grid properties.
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
     
