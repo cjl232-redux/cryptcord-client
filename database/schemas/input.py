@@ -4,16 +4,24 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime
 from typing import Annotated
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
+from cryptography.hazmat.primitives.asymmetric.x25519 import (
+    X25519PrivateKey,
+    X25519PublicKey,
+)
 from pydantic import BaseModel, BeforeValidator, StringConstraints
 
 from database.models import MessageType
 
 type _BytesType = bytes | bytearray | memoryview
+type _PrivateKeyType = Ed25519PrivateKey | X25519PrivateKey
+type _PublicKeyType = Ed25519PublicKey | X25519PublicKey
 
-def _validate_elliptic_curve_key(
-        value: _BytesType | str | Ed25519PublicKey | X25519PrivateKey,
+def _validate_key(
+        value: _BytesType | str | _PublicKeyType | _PrivateKeyType,
     ) -> str:
     if isinstance(value, (bytes, bytearray, memoryview, str)):
         try:
@@ -25,11 +33,11 @@ def _validate_elliptic_curve_key(
             return urlsafe_b64encode(raw_bytes).decode()
         except binascii.Error:
             raise ValueError('Value is not valid Base64')
-    elif isinstance(value, Ed25519PublicKey):
+    elif isinstance(value, (Ed25519PublicKey, X25519PublicKey)):
         return urlsafe_b64encode(value.public_bytes_raw()).decode()
     else:
         return urlsafe_b64encode(value.private_bytes_raw()).decode()
-    
+
 def _validate_fernet_key(value: _BytesType | str):
     try:
         raw_bytes = urlsafe_b64decode(value)
@@ -39,9 +47,9 @@ def _validate_fernet_key(value: _BytesType | str):
     except binascii.Error:
         raise ValueError('Value is not valid Base64')
     
-type _EllipticCurveKey = Annotated[
+type _Key = Annotated[
     str,
-    BeforeValidator(_validate_elliptic_curve_key),
+    BeforeValidator(_validate_key),
 ]
 
 type _FernetKey = Annotated[
@@ -65,9 +73,7 @@ class ContactInputSchema(BaseModel):
         'arbitrary_types_allowed': True,
     }
     name: str
-    verification_key: _EllipticCurveKey
-    ephemeral_key: _EllipticCurveKey | None = None
-    fernet_key: _FernetKey | None = None
+    public_key: _Key
 
 class MessageInputSchema(BaseModel):
     text: str
@@ -75,3 +81,13 @@ class MessageInputSchema(BaseModel):
     message_type: MessageType
     contact_id: int
     nonce: _MessageNonce
+
+class _KeyInputSchema(BaseModel):
+    key: _Key
+    contact_id: int
+
+class ExchangeKeyInputSchema(_KeyInputSchema):
+    pass
+
+class FernetKeyInputSchema(_KeyInputSchema):
+    timestamp: datetime

@@ -6,7 +6,7 @@ from typing import Annotated
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
 from pydantic import BeforeValidator, BaseModel, ConfigDict
 
 def _validate_b64(value: str) -> str:
@@ -24,10 +24,10 @@ def _validate_b64_verification_key(value: str) -> Ed25519PublicKey:
     except ValueError:
         raise ValueError('Value must have an unencoded length of 32 bytes')
     
-def _validate_b64_ephemeral_key(value: str) -> X25519PrivateKey:
+def _validate_b64_ephemeral_key(value: str) -> X25519PublicKey:
     try:
         raw_bytes = urlsafe_b64decode(value)
-        return X25519PrivateKey.from_private_bytes(raw_bytes)
+        return X25519PublicKey.from_public_bytes(raw_bytes)
     except binascii.Error:
         raise ValueError('Value is not valid Base64')
     except ValueError:
@@ -52,7 +52,7 @@ type _VerificationKey = Annotated[
 ]
 
 type _EphemeralKey = Annotated[
-    X25519PrivateKey,
+    X25519PublicKey,
     BeforeValidator(_validate_b64_ephemeral_key),
 ]
 
@@ -85,9 +85,9 @@ class ContactOutputSchema(BaseModel):
     )
     id: int
     name: str
-    verification_key: _VerificationKey
+    public_key: _VerificationKey
     ephemeral_key: _EphemeralKey | None = None
-    fernet_key: _FernetKey | None = None
+    fernet_keys: list[str] | None = None
 
 class ContactOutputSimplifiedSchema(BaseModel):
     """Retrieves the name and key of a contact in string form."""
@@ -97,7 +97,7 @@ class ContactOutputSimplifiedSchema(BaseModel):
         arbitrary_types_allowed=True,
     )
     name: str
-    verification_key: _Base64String
+    public_key: _Base64String
 
 class MessageOutputSchema(BaseModel):
     model_config = ConfigDict(
@@ -110,3 +110,17 @@ class MessageOutputSchema(BaseModel):
     message_type: str
     nonce: _MessageNonce
     contact_id: int
+
+class ContactKeyOutputSchema(BaseModel):
+    public_key: _VerificationKey
+    class Config:
+        arbitrary_types_allowed = True
+        from_attributes = True
+        revalidate_instances = 'always'
+
+class PendingExchangeKeyOutputSchema(BaseModel):
+    key: _EphemeralKey
+    class Config:
+        arbitrary_types_allowed = True
+        from_attributes = True
+        revalidate_instances = 'always'

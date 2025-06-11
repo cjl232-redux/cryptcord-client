@@ -1,18 +1,11 @@
-import binascii
 import tkinter as tk
 
-from base64 import urlsafe_b64decode, urlsafe_b64encode
+from base64 import urlsafe_b64encode
 from tkinter import filedialog, messagebox
 from typing import Annotated
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-    Ed25519PrivateKey,
-    Ed25519PublicKey,
-)
-from cryptography.hazmat.primitives.serialization import (
-    load_pem_private_key,
-    load_pem_public_key,
-)
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from pydantic import AfterValidator, BaseModel, Field
 
 from app_components.dialogs.base import (
@@ -20,15 +13,7 @@ from app_components.dialogs.base import (
     FieldButtonData,
     FieldPropertiesData,
 )
-
-def _validate_key(value: str) -> str:
-    try:
-        raw_bytes = urlsafe_b64decode(value)
-        if len(raw_bytes) != 32:
-            raise ValueError('Value must have an unencoded length of 32 bytes')
-        return urlsafe_b64encode(raw_bytes).decode()
-    except binascii.Error:
-        raise ValueError('Value is not valid Base64')
+from app_components.dialogs.validators import validate_key
 
 def _toggle_password_visibility(entry: tk.Entry, _):
     entry.config(show='●' if entry.cget('show') == '' else '')
@@ -46,27 +31,6 @@ class _PrivateKeyPasswordDialog(BaseDialog[_PrivateKeyPasswordModel]):
     TITLE = 'Encrypted Key Password'
     DESCRIPTION = 'Enter the password for the selected file.'
     VALIDATION_MODEL = _PrivateKeyPasswordModel
-
-def _browse_public_key(_, var: tk.StringVar):
-    file = filedialog.askopenfile(mode='rb')
-    if file is not None:
-        data: bytes = file.read()
-        try:
-            key = load_pem_public_key(data)
-            if isinstance(key, Ed25519PublicKey):
-                var.set(urlsafe_b64encode(key.public_bytes_raw()).decode())
-            else:
-                raise ValueError()
-        except ValueError:
-            messagebox.showerror(
-                title='Error',
-                message=(
-                    'The selected file does not contain a valid PEM-encoding '
-                    'of a public Ed25519 key.'
-                ),
-            )
-        finally:
-            file.close()
 
 def _browse_private_key(entry: tk.Entry, var: tk.StringVar):
     file = filedialog.askopenfile(mode='rb')
@@ -113,34 +77,13 @@ def _browse_private_key(entry: tk.Entry, var: tk.StringVar):
         finally:
             file.close()
 
-class _ContactDialogModel(BaseModel):
-    name: Annotated[
-        str,
-        Field(title='Name'),
-    ]
-    public_key: Annotated[
-        str,
-        Field(title='Public Key'),
-        AfterValidator(_validate_key),
-        FieldButtonData('Browse...', _browse_public_key),
-    ]
-
 class _SignatureKeyDialogModel(BaseModel):
     signature_key: Annotated[
         str,
         Field(title='Signature Key'),
-        AfterValidator(_validate_key),
+        AfterValidator(validate_key),
         FieldButtonData('Browse...', _browse_private_key),
     ]
-
-class AddContactDialog(BaseDialog[_ContactDialogModel]):
-    TITLE = 'Add Contact'
-    DESCRIPTION = (
-        'Specify a unique name and a Base64 representation of a 32-byte '
-        'Ed25519 public key for this contact. The public key can be loaded '
-        'from a PEM-encoded serialisation.'
-    )
-    VALIDATION_MODEL = _ContactDialogModel
 
 class SignatureKeyDialog(BaseDialog[_SignatureKeyDialogModel]):
     TITLE = 'Signature Key'

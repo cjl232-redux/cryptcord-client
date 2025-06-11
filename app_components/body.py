@@ -56,6 +56,7 @@ class _PublicKeyDisplay(ttk.Frame):
             row=0,
             sticky='w',
         )
+        self.columnconfigure(1, weight=1)
 
 class Body(ttk.Frame):
     def __init__(
@@ -90,7 +91,7 @@ class Body(ttk.Frame):
         )
         # Configure grid properties.
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=0)
+        self.rowconfigure(0, weight=1)
 
         
         # notebook = ttk.Notebook(self)

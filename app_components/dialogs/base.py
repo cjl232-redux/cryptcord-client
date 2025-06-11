@@ -39,8 +39,8 @@ class _DescriptionFrame(ttk.Frame):
                 column=0,
                 row=0,
                 sticky='nsew',
-                padx=settings.graphics.dialogs.horizontal_padding,
-                pady=(settings.graphics.dialogs.vertical_padding, 0),
+                padx=settings.graphics.horizontal_padding,
+                pady=(settings.graphics.vertical_padding, 0),
             )
             self.label.bind('<Configure>', self._adjust_wrap)
         self.columnconfigure(0, weight=1)
@@ -55,8 +55,8 @@ class _FieldsFrame(ttk.Frame):
         # Call the base constructor.
         super().__init__(master)
         # Alias the padding settings.
-        horizontal_padding = settings.graphics.dialogs.horizontal_padding
-        vertical_padding = settings.graphics.dialogs.vertical_padding
+        horizontal_padding = settings.graphics.horizontal_padding
+        vertical_padding = settings.graphics.vertical_padding
         field_padding = settings.graphics.dialogs.field_gap
         # Create a dict to hold variables and a list to hold entry widgets.
         self.entries: list[ttk.Entry] = list()
@@ -138,16 +138,16 @@ class _ButtonFrame(ttk.Frame):
             column=0,
             row=0,
             sticky='w',
-            padx=settings.graphics.dialogs.horizontal_padding,
-            pady=settings.graphics.dialogs.vertical_padding,
+            padx=settings.graphics.horizontal_padding,
+            pady=settings.graphics.vertical_padding,
         )
         self.cancel_button = ttk.Button(self, text='Cancel')
         self.cancel_button.grid(
             column=1,
             row=0,
             sticky='w',
-            padx=(0, settings.graphics.dialogs.horizontal_padding),
-            pady=settings.graphics.dialogs.vertical_padding,
+            padx=(0, settings.graphics.horizontal_padding),
+            pady=settings.graphics.vertical_padding,
         )        
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)

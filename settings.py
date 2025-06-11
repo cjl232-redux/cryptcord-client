@@ -2,7 +2,24 @@ import os
 
 import yaml
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, Field
+
+class _DatabaseSettingsModel(BaseModel):
+    url: str = 'sqlite:///database.db'
+
+class _FunctionalitySettingsModel(BaseModel):
+    scroll_speed: int = Field(default=5, ge=1)
+
+class _DialogGraphicsSettingsModel(BaseModel):
+    description_wrap_length: int = Field(default=480, ge=1)
+    field_gap: int = 4
+
+class _GraphicsSettingsModel(BaseModel):
+    dialogs: _DialogGraphicsSettingsModel = _DialogGraphicsSettingsModel()
+    font_family: str = 'Segue UI'
+    font_size: int = Field(default=9, ge=1)
+    horizontal_padding: int = Field(default=10, ge=1)
+    vertical_padding: int = Field(default=10, ge=1)
 
 class _ServerSettingsModel(BaseModel):
     post_message_url: str = '127.0.0.1:8000/messages/post'
@@ -11,8 +28,13 @@ class _ServerSettingsModel(BaseModel):
     fetch_exchange_keys_url: str = '127.0.0.1:8000/exchange-keys/retrieve'
 
 class _SettingsModel(BaseModel):
-    model_config = ConfigDict(validate_default=True)
+    local_database: _DatabaseSettingsModel = _DatabaseSettingsModel()
+    functionality: _FunctionalitySettingsModel = _FunctionalitySettingsModel()
+    graphics: _GraphicsSettingsModel = _GraphicsSettingsModel()
     server: _ServerSettingsModel = _ServerSettingsModel()
+    window_name: str = 'Cryptcord'
+    class Config:
+        validate_default = True
 
 
 def _load_settings():

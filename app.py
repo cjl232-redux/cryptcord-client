@@ -42,84 +42,20 @@ class Application(tk.Tk):
             self.destroy()
             return
         # Create and place the application body.
-        Body(self, self.engine, self.signature_key).grid(column=0, row=0)
+        Body(
+            master=self,
+            engine=self.engine,
+            signature_key=self.signature_key,
+        ).grid(
+            column=0,
+            row=0,
+            sticky='nsew',
+        )
+        # Configure grid properties.
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
         # Restore the window.
         self.deiconify()
-
-        
-
-        # # Retrieve the local database url from settings, or set a default.
-        # database_url: str = 'sqlite:///database.db'
-
-        # try:
-        #     # Attempt to start the engine with the provided url.
-        #     self.engine = create_engine(database_url, echo=False)
-        #     event.listen(self.engine, "before_cursor_execute", explain_query)
-        # except:
-        #     # If an exception is raised, terminate with a message.
-        #     messagebox.showerror(
-        #         title='Invalid Database Path',
-        #         message=(
-        #             f'The local database file path specified in '
-        #             f'{SETTINGS_FILE_PATH} is invalid.'
-        #         ),
-        #     )
-        #     self.destroy()
-        #     return
-        # # Restore the main window and render all children.
-        # self.deiconify()
-        # self.body = Body(
-        #     master=self,
-        #     engine=self.engine,
-        #     signature_key=self.signature_key,
-        #     settings=None,
-        # )
-        # self.body.grid(column=0, row=0, sticky='nsew', padx=5, pady=5)
-        # self.grid_columnconfigure(0, weight=1)
-        # self.grid_rowconfigure(0, weight=1)
-
-        # Set up the task manager.
-        # self.task_manager = TaskManager(
-        #     master=self,
-        #     engine=self.engine,
-        #     signature_key=self.signature_key,
-        #     frequency_ms=300,
-        # )
-
-        # Test
-        # from base64 import b64encode
-        # data = {
-        #     'command': 'SEND_MESSAGE2',
-        #     'recipient_public_key': 'rwaj4ykXFOTzVsGcmxXNGVHsbmZiqne+B1R/KJODNB0=',
-        #     'encrypted_message': 'Main app calling Kirby.',
-        #     'signature': b64encode(self.signature_key.sign('Main app calling Kirby.'.encode())).decode(),
-        # }
-        # response = self.server_context.send_request(data)
-        # print(response)
-    def _tasks(self):
-        server_interface.retrieve_messages(
-            url=RETRIEVE_MESSAGES_URL,
-            engine=self.engine,
-            public_key=self.base64_public_key,
-            contact_dict=self.contact_dict,
-            min_datetime=None,
-        )
-        # retrieval_data: dict[str, Any] = {
-        #     'public_key': self.base64_public_key,
-        # }
-        # response = requests.post(
-        #     url=RETRIEVE_MESSAGES_URL,
-        #     json=retrieval_data,
-        # )
-        # print(response.json())
-        # response = requests.post(
-        #     url=RETRIEVE_KEY_EXCHANGES_URL,
-        #     json=retrieval_data,
-        # )
-        # print(response.json())
-        self.after(SERVER_RETRIEVE_REFRESH_TIME, self._tasks)
-
-        pass
 
 if __name__ == '__main__':
     Application().mainloop()

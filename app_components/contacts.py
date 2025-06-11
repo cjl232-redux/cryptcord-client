@@ -1,28 +1,25 @@
 from tkinter import messagebox, ttk
-from typing import Any
 
-from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import Engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app_components.dialogs.contact_dialogs import AddContactDialog
 from app_components.messages import MessageWindow
 from app_components.scrollable_frames import ScrollableFrame
-from app_components.settings import SettingsSchema
 from database.models import Contact
 from database.schemas.output import ContactOutputSchema
+from settings import settings
 
 class _ExistingContactsFrame(ScrollableFrame):
     def __init__(
             self,
             master: ttk.Frame,
             engine: Engine,
-            signature_key: ed25519.Ed25519PrivateKey,
-            scroll_speed: int = 5,
-            *args: tuple[Any],
-            **kwargs: dict[str, Any],
+            signature_key: Ed25519PrivateKey,
     ):
-        super().__init__(master, scroll_speed, *args, **kwargs)
+        super().__init__(master)
         self.engine = engine
         self.signature_key = signature_key
         self.message_windows: dict[int, MessageWindow] = {}
@@ -44,16 +41,21 @@ class _ExistingContactsFrame(ScrollableFrame):
                     column=0,
                     row=row,
                     sticky='w',
-                    pady=(0, 5),
+                    padx=(0, settings.graphics.horizontal_padding),
+                    pady=(0, settings.graphics.vertical_padding),
                 )
                 ttk.Button(
                     master=self.interior,
                     text='Message',
-                    command=lambda contact=contact: self._open_messages(contact),
+                    command=(
+                        lambda contact=contact:
+                            self._open_messages(contact)
+                    ),
                 ).grid(
                     column=1,
                     row=row,
-                    pady=(0, 5),
+                    padx=(0, settings.graphics.horizontal_padding),
+                    pady=(0, settings.graphics.vertical_padding),
                 )
                 ttk.Button(
                     master=self.interior,
@@ -62,24 +64,22 @@ class _ExistingContactsFrame(ScrollableFrame):
                 ).grid(
                     column=2,
                     row=row,
-                    pady=(0, 5),
+                    padx=(0, settings.graphics.horizontal_padding),
+                    pady=(0, settings.graphics.vertical_padding),
                 )
 
-    def _open_messages(
-            self,
-            contact: ContactOutputSchema,
-        ):
+    def _open_messages(self, contact: ContactOutputSchema):
         message_window = self.message_windows.get(contact.id)
         if message_window is not None and message_window.winfo_exists():
             message_window.focus()
         else:
             self.message_windows[contact.id] = MessageWindow(
-                master=self,
+                master=self.winfo_toplevel(),
                 engine=self.engine,
                 signature_key=self.signature_key,
                 contact_id=contact.id,
                 contact_name=contact.name,
-                contact_verification_key=contact.verification_key,
+                contact_public_key=contact.public_key,
             )
 
     def _remove_contact(self, id: int):
@@ -106,12 +106,13 @@ class ContactsPane(ttk.Frame):
             self,
             master: ttk.Notebook,
             engine: Engine,
-            signature_key: ed25519.Ed25519PrivateKey,
-            #settings: SettingsSchema,
+            signature_key: Ed25519PrivateKey,
         ):
+        # Call the Frame constructor.
         super().__init__(master)
+        # Store relevant variables.
         self.engine = engine
-
+        # Create and place widgets.
         self.existing_contacts_frame = _ExistingContactsFrame(
             master=self,
             engine=engine,
@@ -122,8 +123,6 @@ class ContactsPane(ttk.Frame):
             row=1,
             columnspan=2,
             sticky='nsew',
-            padx=(10, 10),
-            pady=(5, 10),
         )
         ttk.Button(
             master=self,
@@ -133,8 +132,8 @@ class ContactsPane(ttk.Frame):
             column=0,
             row=0,
             sticky='e',
-            padx=(10, 5),
-            pady=(10, 5),
+            padx=settings.graphics.horizontal_padding,
+            pady=settings.graphics.vertical_padding,
         )
         ttk.Button(
             master=self,
@@ -144,40 +143,256 @@ class ContactsPane(ttk.Frame):
             column=1,
             row=0,
             sticky='ew',
-            padx=(5, 10),
-            pady=(10, 5),
+            padx=(0, settings.graphics.horizontal_padding),
+            pady=settings.graphics.vertical_padding,
         )
+        # Configure grid properties.
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
-
+        # Perform an initial load of existing contacts.
         self.existing_contacts_frame.reload()
+        # Will need an AFTER in here for server retrieval
 
     def _add_contact(self, *_):
-        # Retrieve existing names and keys.
-        with Session(self.engine) as session:
-            used_names: set[str] = set()
-            used_public_keys: set[bytes] = set()
-            existing_contacts = (
-                ContactOutputSchema.model_validate(contact)
-                for contact in session.scalars(select(Contact))
-            )
-            for contact in existing_contacts:
-                used_names.add(contact.name)
-                used_public_keys.add(contact.public_key.public_bytes_raw())
-        # Construct the dialog and await a result.
-        dialog = AddContactDialog(
-            master=self,
-            used_names=used_names,
-            used_public_keys=used_public_keys,
-        )
+        dialog = AddContactDialog(self)
         self.wait_window(dialog)
-        if dialog.result:
-            # Needs to be a contact output object, or rather an input one
+        if dialog.result is not None:
             with Session(self.engine) as session:
-                contact = Contact(**dialog.result.model_dump())
-                session.add(contact)
-                session.commit()
-            self.existing_contacts_frame.reload()
+                session.add(Contact(**dialog.result.model_dump()))
+                try:
+                    session.commit()
+                    self.existing_contacts_frame.reload()
+                except IntegrityError:
+                    session.rollback()
+                    statement = select(
+                        Contact
+                    ).where(
+                        Contact.public_key == dialog.result.public_key,
+                    )
+                    if session.scalar(statement) is None:
+                        messagebox.showerror(
+                            title='Add Contact Failure',
+                            message='A contact with this name already exists.'
+                        )
+                    else:
+                        messagebox.showerror(
+                            title='Add Contact Failure',
+                            message='A contact with this key already exists.'
+                        )
+
+
+
+
+
+
+
+
+
+
+
+        # # Retrieve existing names and keys.
+        # with Session(self.engine) as session:
+        #     used_names: set[str] = set()
+        #     used_public_keys: set[bytes] = set()
+        #     existing_contacts = (
+        #         ContactOutputSchema.model_validate(contact)
+        #         for contact in session.scalars(select(Contact))
+        #     )
+        #     for contact in existing_contacts:
+        #         used_names.add(contact.name)
+        #         used_public_keys.add(contact.public_key.public_bytes_raw())
+        # # Construct the dialog and await a result.
+        # dialog = AddContactDialog(
+        #     master=self,
+        #     used_names=used_names,
+        #     used_public_keys=used_public_keys,
+        # )
+        # self.wait_window(dialog)
+        # if dialog.result:
+        #     # Needs to be a contact output object, or rather an input one
+        #     with Session(self.engine) as session:
+        #         contact = Contact(**dialog.result.model_dump())
+        #         session.add(contact)
+        #         session.commit()
+        #     self.existing_contacts_frame.reload()
+
+
+
+
+
+
+
+
+
+
+# class _ExistingContactsFrame(ScrollableFrame):
+#     def __init__(
+#             self,
+#             master: ttk.Frame,
+#             engine: Engine,
+#             signature_key: ed25519.Ed25519PrivateKey,
+#             scroll_speed: int = 5,
+#             *args: tuple[Any],
+#             **kwargs: dict[str, Any],
+#     ):
+#         super().__init__(master, scroll_speed, *args, **kwargs)
+#         self.engine = engine
+#         self.signature_key = signature_key
+#         self.message_windows: dict[int, MessageWindow] = {}
+
+#     def reload(self):
+#         for widget in self.interior.winfo_children():
+#             widget.grid_forget()
+#         with Session(self.engine) as session:
+#             statement = select(Contact).order_by(Contact.name)
+#             contacts = (
+#                 ContactOutputSchema.model_validate(contact)
+#                 for contact in session.scalars(statement)
+#             )
+#             for row, contact in enumerate(contacts):
+#                 ttk.Label(
+#                     master=self.interior,
+#                     text=contact.name,
+#                 ).grid(
+#                     column=0,
+#                     row=row,
+#                     sticky='w',
+#                     pady=(0, 5),
+#                 )
+#                 ttk.Button(
+#                     master=self.interior,
+#                     text='Message',
+#                     command=lambda contact=contact: self._open_messages(contact),
+#                 ).grid(
+#                     column=1,
+#                     row=row,
+#                     pady=(0, 5),
+#                 )
+#                 ttk.Button(
+#                     master=self.interior,
+#                     text='Remove',
+#                     command=lambda id=contact.id: self._remove_contact(id),
+#                 ).grid(
+#                     column=2,
+#                     row=row,
+#                     pady=(0, 5),
+#                 )
+
+#     def _open_messages(
+#             self,
+#             contact: ContactOutputSchema,
+#         ):
+#         message_window = self.message_windows.get(contact.id)
+#         if message_window is not None and message_window.winfo_exists():
+#             message_window.focus()
+#         else:
+#             self.message_windows[contact.id] = MessageWindow(
+#                 master=self,
+#                 engine=self.engine,
+#                 signature_key=self.signature_key,
+#                 contact_id=contact.id,
+#                 contact_name=contact.name,
+#                 contact_verification_key=contact.verification_key,
+#             )
+
+#     def _remove_contact(self, id: int):
+#         message_window = self.message_windows.get(id)
+#         if message_window is not None and message_window.winfo_exists():
+#             message_window.destroy()
+#         with Session(self.engine) as session:
+#             contact_obj = session.get_one(Contact, id)
+#             contact = ContactOutputSchema.model_validate(contact_obj)
+#             confirmation = messagebox.askyesno(
+#                 title='Confirm Contact Deletion',
+#                 message=(
+#                     f'Are you sure you wish to delete {contact.name}? '
+#                     f'this will delete all saved messages.'
+#                 ),
+#             )
+#             if confirmation:
+#                 session.delete(contact_obj)
+#                 session.commit()
+#                 self.reload()
+
+# class ContactsPane(ttk.Frame):
+#     def __init__(
+#             self,
+#             master: ttk.Notebook,
+#             engine: Engine,
+#             signature_key: ed25519.Ed25519PrivateKey,
+#             #settings: SettingsSchema,
+#         ):
+#         # Call the Frame constructor.
+#         super().__init__(master)
+#         # Store relevant variables.
+#         self.engine = engine
+#         # Create and place widgets.
+#         self.existing_contacts_frame = _ExistingContactsFrame(
+#             master=self,
+#             engine=engine,
+#             signature_key=signature_key,
+#         )
+#         self.existing_contacts_frame.grid(
+#             column=0,
+#             row=1,
+#             columnspan=2,
+#             sticky='nsew',
+#             padx=(10, 10),
+#             pady=(5, 10),
+#         )
+#         ttk.Button(
+#             master=self,
+#             text='Add Contact',
+#             command=self._add_contact,
+#         ).grid(
+#             column=0,
+#             row=0,
+#             sticky='e',
+#             padx=(10, 5),
+#             pady=(10, 5),
+#         )
+#         ttk.Button(
+#             master=self,
+#             text='Refresh',
+#             command=self.existing_contacts_frame.reload,
+#         ).grid(
+#             column=1,
+#             row=0,
+#             sticky='ew',
+#             padx=(5, 10),
+#             pady=(10, 5),
+#         )
+#         self.columnconfigure(0, weight=1)
+#         self.rowconfigure(1, weight=1)
+
+#         self.existing_contacts_frame.reload()
+
+#     def _add_contact(self, *_):
+#         # Retrieve existing names and keys.
+#         with Session(self.engine) as session:
+#             used_names: set[str] = set()
+#             used_public_keys: set[bytes] = set()
+#             existing_contacts = (
+#                 ContactOutputSchema.model_validate(contact)
+#                 for contact in session.scalars(select(Contact))
+#             )
+#             for contact in existing_contacts:
+#                 used_names.add(contact.name)
+#                 used_public_keys.add(contact.public_key.public_bytes_raw())
+#         # Construct the dialog and await a result.
+#         dialog = AddContactDialog(
+#             master=self,
+#             used_names=used_names,
+#             used_public_keys=used_public_keys,
+#         )
+#         self.wait_window(dialog)
+#         if dialog.result:
+#             # Needs to be a contact output object, or rather an input one
+#             with Session(self.engine) as session:
+#                 contact = Contact(**dialog.result.model_dump())
+#                 session.add(contact)
+#                 session.commit()
+#             self.existing_contacts_frame.reload()
 
 
 

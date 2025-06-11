@@ -1,9 +1,12 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Enum as SQLEnum, ForeignKey
+from sqlalchemy import Enum as SQLEnum, ForeignKey, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import DateTime, String, Text
+
+def _values_callable(x: type[Enum]):
+    return [i.value for i in x]
 
 class Base(DeclarativeBase):
     pass
@@ -19,21 +22,24 @@ class Contact(Base):
         unique=True,
         nullable=False,
     )
-    verification_key: Mapped[str] = mapped_column(
+    public_key: Mapped[str] = mapped_column(
         String(44),
         unique=True,
         nullable=False,
     )
-    ephemeral_key: Mapped[str] = mapped_column(
-        String(44),
-        nullable=True,
-    )
-    fernet_key: Mapped[str] = mapped_column(
-        String(44),
-        nullable=True,
-        default='Aof4XwsVKqrkKIjJrOwNfqg76QF692tIMNhHEzoy8zE=',
-    )
     messages: Mapped[list['Message']] = relationship(
+        back_populates='contact',
+        cascade='all, delete-orphan',
+    )
+    received_exchange_keys: Mapped[list['ReceivedExchangeKey']] = relationship(
+        back_populates='contact',
+        cascade='all, delete-orphan',
+    )
+    sent_exchange_keys: Mapped[list['SentExchangeKey']] = relationship(
+        back_populates='contact',
+        cascade='all, delete-orphan',
+    )
+    fernet_keys: Mapped[list['FernetKey']] = relationship(
         back_populates='contact',
         cascade='all, delete-orphan',
     )
@@ -42,13 +48,10 @@ class MessageType(Enum):
     SENT = 'S'
     RECEIVED = 'R'
 
-def _values_callable(x: type[Enum]):
-    return [i.value for i in x]
-
 class Message(Base):
     __tablename__ = 'messages'
     __table_args__ = (
-        # Index this once I decide on the precise operations
+        Index('messages_contact_timestamp_index', 'contact_id', 'timestamp'),
     )
 
     id: Mapped[int] = mapped_column(
@@ -76,4 +79,55 @@ class Message(Base):
     )
     contact: Mapped[Contact] = relationship(
         back_populates='messages',
+    )
+
+class KeyType(Enum):
+    EPHEMERAL = 'E'
+    COMPLETE = 'C'
+
+class _KeyTable:
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+    key: Mapped[str] = mapped_column(
+        String(44),
+        nullable=False,
+        unique=True,
+    )
+
+class FernetKey(Base, _KeyTable):
+    __tablename__ = 'fernet_keys'
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    contact_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            column=Contact.id,
+        ),
+    )
+    contact: Mapped[Contact] = relationship(
+        back_populates='fernet_keys',
+    )
+
+class ReceivedExchangeKey(Base, _KeyTable):
+    __tablename__ = 'received_exchange_keys'
+    contact_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            column=Contact.id,
+        ),
+    )
+    contact: Mapped[Contact] = relationship(
+        back_populates='received_exchange_keys',
+    )
+
+class SentExchangeKey(Base, _KeyTable):
+    __tablename__ = 'sent_exchange_keys'
+    contact_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            column=Contact.id,
+        ),
+    )
+    contact: Mapped[Contact] = relationship(
+        back_populates='sent_exchange_keys',
     )
