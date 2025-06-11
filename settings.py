@@ -22,10 +22,10 @@ class _GraphicsSettingsModel(BaseModel):
     vertical_padding: int = Field(default=10, ge=1)
 
 class _ServerSettingsModel(BaseModel):
-    post_message_url: str = '127.0.0.1:8000/messages/post'
-    post_exchange_key_url: str = '127.0.0.1:8000/exchange-keys/post'
-    fetch_messages_url: str = '127.0.0.1:8000/messages/retrieve'
-    fetch_exchange_keys_url: str = '127.0.0.1:8000/exchange-keys/retrieve'
+    post_message_url: str = 'http://127.0.0.1:8000/messages/post'
+    post_exchange_key_url: str = 'http://127.0.0.1:8000/exchange-keys/post'
+    fetch_messages_url: str = 'http://127.0.0.1:8000/messages/retrieve'
+    fetch_exchange_keys_url: str = 'http://127.0.0.1:8000/exchange-keys/retrieve'
 
 class _SettingsModel(BaseModel):
     local_database: _DatabaseSettingsModel = _DatabaseSettingsModel()
