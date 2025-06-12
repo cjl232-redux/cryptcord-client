@@ -2,6 +2,7 @@ import tkinter as tk
 
 from datetime import datetime
 from tkinter import ttk
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -36,6 +37,8 @@ class MessageWindow(tk.Toplevel):
         ):
         # Call the TopLevel constructor.
         super().__init__(master)
+        # Rename the window to the contact name.
+        self.title(contact_name)
         # Store supplied values that are required for methods.
         self.engine = engine
         self.signature_key = signature_key
@@ -54,7 +57,14 @@ class MessageWindow(tk.Toplevel):
             pady=settings.graphics.vertical_padding,
             sticky='nsew',
         )
-        self.input_box = tk.Text(self, height=2)
+        self.input_box = tk.Text(
+            self,
+            height=2,
+            font=(
+                settings.graphics.font_family,
+                settings.graphics.font_size,
+            ),
+        )
         self.input_box.grid(
             column=0,
             row=1,
@@ -65,15 +75,13 @@ class MessageWindow(tk.Toplevel):
         # Configure grid properties.
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        self.message_log.interior.columnconfigure(1, weight=1)
-        self.message_log.interior.rowconfigure(0, weight=1)
-        # Load in existing messages.
+        self.message_log.interior.columnconfigure(1, weight=1, minsize=100)
+        # Load in existing messages and set up regular updates.
         self._update_message_log()
         # Finalise and focus on the input box.
         self.input_box.focus()
         self.input_box.bind('<Return>', self._post_message)
         self.input_box.bind('<Shift-Return>', lambda *_: None)
-        self.geometry()
 
     def _update_message_log(self):
         with Session(self.engine) as session:
@@ -107,12 +115,21 @@ class MessageWindow(tk.Toplevel):
                         sticky='nw',
                         pady=pady,
                     )
-                    ttk.Label(
+                    message_label = ttk.Label(
                         master=self.message_log.interior,
                         text=message.text,
-                        wraplength=480,
                         anchor='nw',
-                    ).grid(
+                    )
+                    message_label.bind(
+                        sequence='<Configure>',
+                        func=(
+                            lambda _, label=message_label:
+                                label.config(
+                                    wraplength=label.winfo_width() - 5,
+                                )
+                        )
+                    )
+                    message_label.grid(
                         column=1,
                         row=len(self.loaded_nonces),
                         sticky='nsew',
@@ -122,9 +139,10 @@ class MessageWindow(tk.Toplevel):
                     )
                     ttk.Label(
                         master=self.message_log.interior,
-                        text=message.timestamp.isoformat(
-                            sep=' ',
-                            timespec='minutes'
+                        text=message.timestamp.astimezone(
+                            ZoneInfo('Europe/London'),
+                        ).strftime(
+                            '%Y-%m-%d %H:%M',
                         ),
                         anchor='nw',
                     ).grid(
@@ -135,6 +153,10 @@ class MessageWindow(tk.Toplevel):
                     )
                     self.loaded_nonces.add(message.nonce)
                     self.last_message_timestamp = message.timestamp
+        self.after(
+            ms=int(settings.functionality.message_refresh_rate * 1000),
+            func=self._update_message_log,
+        )
     
     def _post_message(self, *_):
         """
