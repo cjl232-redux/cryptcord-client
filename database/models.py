@@ -85,7 +85,8 @@ class KeyType(Enum):
     EPHEMERAL = 'E'
     COMPLETE = 'C'
 
-class _KeyTable:
+class FernetKey(Base):
+    __tablename__ = 'fernet_keys'
     id: Mapped[int] = mapped_column(
         primary_key=True,
     )
@@ -94,9 +95,6 @@ class _KeyTable:
         nullable=False,
         unique=True,
     )
-
-class FernetKey(Base, _KeyTable):
-    __tablename__ = 'fernet_keys'
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -110,8 +108,16 @@ class FernetKey(Base, _KeyTable):
         back_populates='fernet_keys',
     )
 
-class ReceivedExchangeKey(Base, _KeyTable):
+class ReceivedExchangeKey(Base):
     __tablename__ = 'received_exchange_keys'
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+    public_key: Mapped[str] = mapped_column(
+        String(44),
+        nullable=False,
+        unique=True,
+    )
     contact_id: Mapped[int] = mapped_column(
         ForeignKey(
             column=Contact.id,
@@ -121,8 +127,21 @@ class ReceivedExchangeKey(Base, _KeyTable):
         back_populates='received_exchange_keys',
     )
 
-class SentExchangeKey(Base, _KeyTable):
+class SentExchangeKey(Base):
     __tablename__ = 'sent_exchange_keys'
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+    private_key: Mapped[str] = mapped_column(
+        String(44),
+        nullable=False,
+        unique=True,
+    )
+    public_key: Mapped[str] = mapped_column(
+        String(44),
+        nullable=False,
+        unique=True,
+    )
     contact_id: Mapped[int] = mapped_column(
         ForeignKey(
             column=Contact.id,

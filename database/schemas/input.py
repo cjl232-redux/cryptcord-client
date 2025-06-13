@@ -82,12 +82,17 @@ class MessageInputSchema(BaseModel):
     contact_id: int
     nonce: _MessageNonce
 
-class _KeyInputSchema(BaseModel):
-    key: _Key
+class ReceivedExchangeKeyInputSchema(BaseModel):
+    public_key: _Key
+    contact_id: int
+    timestamp: datetime
+
+class SentExchangeKeyInputSchema(BaseModel):
+    private_key: _Key
+    public_key: _Key
     contact_id: int
 
-class ExchangeKeyInputSchema(_KeyInputSchema):
-    pass
-
-class FernetKeyInputSchema(_KeyInputSchema):
+class FernetKeyInputSchema(BaseModel):
+    key: _Key
+    contact_id: int
     timestamp: datetime

@@ -20,14 +20,14 @@ class ScrollableFrame(ttk.Frame):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
         # Place an interior padding frame that will fill the canvas.
-        padding_frame = ttk.Frame(self.canvas)
+        padding_frame = tk.Frame(self.canvas, background='red')
         canvas_window = self.canvas.create_window(
             0,
             0,
             window=padding_frame,
             anchor='nw',
         )
-        self.interior = ttk.Frame(padding_frame)
+        self.interior = tk.Frame(padding_frame, background='green')
         self.interior.grid(
             row=0,
             column=0,

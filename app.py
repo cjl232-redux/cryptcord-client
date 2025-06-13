@@ -1,3 +1,28 @@
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+import logging
+
+logging.basicConfig()
+logger = logging.getLogger("sqlalchemy.explain")
+logger.setLevel(logging.INFO)
+
+def explain_query(conn, cursor, statement, parameters, context, executemany):
+    if statement.lstrip().upper().startswith("SELECT"):
+        try:
+            explain_stmt = f"EXPLAIN QUERY PLAN {statement}"
+            cursor.execute(explain_stmt, parameters)
+            plan = cursor.fetchall()
+            logger.info("Query: %s", statement)
+            logger.info("Parameters: %s", parameters)
+            logger.info("EXPLAIN plan:")
+            for row in plan:
+                logger.info(row)
+        except Exception as e:
+            logger.warning("EXPLAIN failed: %s", e)
+
+
+
+
 import tkinter as tk
 
 from base64 import urlsafe_b64decode
@@ -10,6 +35,7 @@ from sqlalchemy.exc import ArgumentError as SQLAlchemyArgumentError
 from app_components.body import Body
 from app_components.dialogs.key_dialogs import SignatureKeyDialog
 from database.models import Base as BaseDatabaseModel
+from server.operations import retrieve_exchange_keys
 from settings import settings
 
 class Application(tk.Tk):
@@ -22,6 +48,7 @@ class Application(tk.Tk):
         # Attempt to connect to the local database.
         try:
             self.engine = create_engine(settings.local_database.url)
+            event.listen(self.engine, "before_cursor_execute", explain_query)
             BaseDatabaseModel.metadata.create_all(self.engine)
         # If this fails, show an error message and terminate the application.
         except SQLAlchemyArgumentError:
@@ -56,6 +83,19 @@ class Application(tk.Tk):
         self.rowconfigure(0, weight=1)
         # Restore the window.
         self.deiconify()
+        # Set up repeating server retrieval calls.
+        self.after(
+            int(settings.functionality.server_retrieval_rate * 1000),
+            self.server_retrieval,
+        )
+
+    def server_retrieval(self):
+        retrieve_exchange_keys(self.engine, self.signature_key)
+        self.after(
+            int(settings.functionality.server_retrieval_rate * 1000),
+            self.server_retrieval,
+        )
+
 
 if __name__ == '__main__':
     Application().mainloop()

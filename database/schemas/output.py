@@ -1,13 +1,13 @@
 import binascii
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
-from pydantic import BeforeValidator, BaseModel, ConfigDict
+from pydantic import AfterValidator, BeforeValidator, BaseModel, ConfigDict
 
 def _validate_b64(value: str) -> str:
     try:
@@ -86,10 +86,8 @@ class ContactOutputSchema(BaseModel):
     id: int
     name: str
     public_key: _VerificationKey
-    ephemeral_key: _EphemeralKey | None = None
-    fernet_keys: list[str] | None = None
 
-class ContactOutputSimplifiedSchema(BaseModel):
+class ContactSimplifiedOutputSchema(BaseModel):
     """Retrieves the name and key of a contact in string form."""
     model_config = ConfigDict(
         from_attributes=True,
@@ -106,7 +104,10 @@ class MessageOutputSchema(BaseModel):
     )
     id: int
     text: str
-    timestamp: datetime
+    timestamp: Annotated[
+        datetime,
+        AfterValidator(lambda x: x.replace(tzinfo=timezone.utc)),
+    ]
     message_type: str
     nonce: _MessageNonce
     contact_id: int
@@ -119,7 +120,7 @@ class ContactKeyOutputSchema(BaseModel):
         revalidate_instances = 'always'
 
 class PendingExchangeKeyOutputSchema(BaseModel):
-    key: _EphemeralKey
+    public_key: _EphemeralKey
     class Config:
         arbitrary_types_allowed = True
         from_attributes = True

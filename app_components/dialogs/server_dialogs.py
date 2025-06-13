@@ -3,7 +3,7 @@ import tkinter as tk
 from ipaddress import ip_address
 from tkinter import ttk
 
-from app_components.dialogs.base import Dialog
+from app_components.dialogs._base import Dialog
 from app_components.dialogs.fields import Field
 
 class ServerDialog(Dialog):

@@ -1,6 +1,7 @@
 import binascii
 
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from datetime import datetime
 from typing import Annotated
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -21,6 +22,11 @@ def _validate_public_key(
         raise ValueError('Value must have an unencoded length of 32 bytes')
     return urlsafe_b64encode(raw_bytes).decode()
 
+def _validate_public_key_list(
+    value: list[str | Ed25519PublicKey | X25519PublicKey],
+) -> list[str]:
+    return [_validate_public_key(x) for x in value]
+
 def _validate_message(value: bytes) -> str:
     return value.decode()
 
@@ -32,6 +38,11 @@ def _validate_signature(value: bytes) -> str:
 type _PublicKey = Annotated[
     str,
     BeforeValidator(_validate_public_key),
+]
+
+type _PublicKeyList = Annotated[
+    list[str],
+    BeforeValidator(_validate_public_key_list),
 ]
 
 type _Message = Annotated[
@@ -61,37 +72,6 @@ class PostExchangeKeyRequest(_BasePostRequest):
 class PostMessageRequest(_BasePostRequest):
     encrypted_text: _Message
 
-
-from typing import Any
-import requests as pyrequests
-from server.schemas.responses import PostDataResponse
-from base64 import urlsafe_b64encode
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-if __name__ == '__main__':
-    private_key = Ed25519PrivateKey.generate()
-    public_key = private_key.public_key()
-    recipient_public_key = Ed25519PrivateKey.generate().public_key()
-    ephemeral_private_key = X25519PrivateKey.generate()
-    ephemeral_public_key = ephemeral_private_key.public_key()
-    received_key = X25519PrivateKey.generate().public_key()
-    signature = private_key.sign(ephemeral_public_key.public_bytes_raw())
-
-    data: dict[str, Any] = {
-        'public_key': public_key,
-        'recipient_public_key': recipient_public_key,
-        'signature': signature,
-        'exchange_key': ephemeral_public_key,
-        'response_to': received_key,
-    }
-    #print(data)
-
-    obj = PostExchangeKeyRequest.model_validate(data)
-
-    response = PostDataResponse.model_validate(
-        pyrequests.post('http://127.0.0.1:8000/exchange_keys/post', json=obj.model_dump()).json()
-    )
-    print(response.data)
-    print(response.data.timestamp.tzinfo)
-
-
+class RetrieveDataRequest(_BaseRequest):
+    sender_keys: _PublicKeyList | None = None
+    min_datetime: datetime | None = None
