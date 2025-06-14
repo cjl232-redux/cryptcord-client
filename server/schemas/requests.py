@@ -35,6 +35,9 @@ def _validate_signature(value: bytes) -> str:
         raise ValueError('Value must have an unencoded length of 64 bytes')
     return urlsafe_b64encode(value).decode()
 
+def _validate_timestamp(value: datetime) -> str:
+    return value.isoformat()
+
 type _PublicKey = Annotated[
     str,
     BeforeValidator(_validate_public_key),
@@ -55,6 +58,8 @@ type _Signature = Annotated[
     BeforeValidator(_validate_signature),
 ]
 
+type _UTCTimestamp = Annotated[str, BeforeValidator(_validate_timestamp)]
+
 class _BaseRequest(BaseModel):
     public_key: _PublicKey
 
@@ -72,6 +77,6 @@ class PostExchangeKeyRequest(_BasePostRequest):
 class PostMessageRequest(_BasePostRequest):
     encrypted_text: _Message
 
-class RetrieveDataRequest(_BaseRequest):
+class FetchDataRequest(_BaseRequest):
     sender_keys: _PublicKeyList | None = None
-    min_datetime: datetime | None = None
+    min_datetime: _UTCTimestamp | None = None

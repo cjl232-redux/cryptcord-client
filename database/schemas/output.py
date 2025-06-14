@@ -134,12 +134,13 @@
 
 from pydantic import BaseModel
 
-from schema_components.types import (
-    Nonce,
+from database.models import MessageType
+from schema_components.types.common import UTCTimestamp
+from schema_components.types.output import (
+    IntNonce,
     PrivateExchangeKey,
     PublicExchangeKey,
     PublicVerificationKey,
-    UTCTimestamp,
 )
 
 class ContactOutputSchema(BaseModel):
@@ -154,8 +155,8 @@ class MessageOutputSchema(BaseModel):
     id: int
     text: str
     timestamp: UTCTimestamp
-    message_type: str
-    nonce: Nonce
+    message_type: MessageType
+    nonce: IntNonce
     contact: ContactOutputSchema
     class Config:
         from_attributes = True
@@ -171,5 +172,5 @@ class SentExchangeKeyOutputSchema(_ExchangeKeyOutputSchema):
 
 class ReceivedExchangeKeyOutputSchema(_ExchangeKeyOutputSchema):
     timestamp: UTCTimestamp
-    contact_id: int
+    contact: ContactOutputSchema
     sent_exchange_key: SentExchangeKeyOutputSchema | None

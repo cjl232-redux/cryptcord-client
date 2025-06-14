@@ -31,7 +31,7 @@ def key_to_base64(key: _PrivateKey | _PublicKey) -> str:
     else:
         return urlsafe_b64encode(key.public_bytes_raw()).decode()
 
-def _base64_to_raw(value: str | bytes, length: int | None = None) -> bytes:
+def base64_to_raw(value: str | bytes, length: int | None = None) -> bytes:
     try:
         raw_bytes = urlsafe_b64decode(value)
         if length is not None and len(raw_bytes) != length:
@@ -46,7 +46,7 @@ def base64_to_key(
         value: str,
         output_type: _PrivateKeyType | _PublicKeyType | type[Fernet],
     ):
-    raw_bytes = _base64_to_raw(value, 32)
+    raw_bytes = base64_to_raw(value, 32)
     if issubclass(output_type, (Ed25519PrivateKey, X25519PrivateKey)):
         return output_type.from_private_bytes(raw_bytes)
     elif issubclass(output_type, (Ed25519PublicKey, X25519PublicKey)):
@@ -59,7 +59,30 @@ def datetime_to_utc(value: datetime):
 
 def datetime_to_str(value: datetime):
     return datetime_to_utc(value).isoformat()
+
+def validate_hex_nonce(value: int | str) -> str:
+    if isinstance(value, int):
+        if value < 0:
+            raise ValueError('Value must be positive')
+        return hex(value)
+    else:
+        if value.startswith('-'):
+            raise ValueError('Value must be positive')
+        try:
+            return hex(int(value, 16))
+        except ValueError:
+            raise ValueError(f'Value is not valid hexadecimal')
+
     
-def hex_to_int(value: str):
-    return int(value, 16)
-    
+def validate_int_nonce(value: int | str) -> int:
+    if isinstance(value, int):
+        if value < 0:
+            raise ValueError('Value must be positive')
+        return value
+    else:
+        if value.startswith('-'):
+            raise ValueError('Value must be positive')
+        try:
+            return int(value, 16)
+        except ValueError:
+            raise ValueError(f'Value is not valid hexadecimal')

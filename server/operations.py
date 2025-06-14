@@ -4,12 +4,17 @@
 # Need a change in approach. Too much is happening in one function. Retrieval should simply store values, mass conversion to fernets should come separately.
 # So should attempts to post keys in response to receiving a key that's not a response to your own.
 
+import asyncio
 
 from datetime import datetime, timezone
+from types import CoroutineType
+from typing import Any
 
 import httpx
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from pydantic import BaseModel
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
@@ -21,12 +26,18 @@ from database.models import (
 )
 from database.schemas.input import (
     ReceivedExchangeKeyInputSchema,
+    SentExchangeKeyInputSchema,
+)
+from database.schemas.output import (
+    ReceivedExchangeKeyOutputSchema,
 )
 from server.schemas.requests import (
     FetchDataRequest,
+    PostExchangeKeyRequest,
 )
 from server.schemas.responses import (
     FetchExchangeKeysResponseModel,
+    PostExchangeKeyResponseModel,
 )
 from settings import settings
 
@@ -161,5 +172,84 @@ def retrieve_exchange_keys(
         print(raw_response.json())
         print('connection failed')
 
-def post_pending_exchange_keys(engine: Engine):
+class _OutboundExchangeKeyContext(BaseModel):
+    received_key_id: int
+    private_exchange_key: X25519PrivateKey
+    request: PostExchangeKeyRequest
+    class Config:
+        arbitrary_types_allowed = True
+
+def post_pending_exchange_keys(
+        engine: Engine,
+        signature_key: Ed25519PrivateKey,
+    ):
     """Sends exchange keys for all received keys not yet matched with one."""
+    # Define async functions to run connections through.
+    async def post_one(
+        client: httpx.AsyncClient,
+        outbound_context: _OutboundExchangeKeyContext,
+        ):
+        raw_response = await client.post(
+            url=settings.server.post_exchange_key_url,
+            json=outbound_context.request.model_dump(),
+        )
+        if 200 <= raw_response.status_code <= 299:
+            response = PostExchangeKeyResponseModel.model_validate(
+                raw_response.json(),
+            )
+            return (outbound_context, response)
+        else:
+            return (outbound_context, None)
+    async def post_all(outbound_contexts: list[_OutboundExchangeKeyContext]):
+        async with httpx.AsyncClient() as client:
+            tasks = [post_one(client, x) for x in outbound_contexts]
+            return await asyncio.gather(*tasks)
+        
+    # Gather all the relevant keys and assemble requests.
+    statement = select(
+        ReceivedExchangeKey
+    ).where(
+        ReceivedExchangeKey.sent_exchange_key == None,
+    ).where(
+        ReceivedExchangeKey.fernet_key == None,
+    )
+    outbound_contexts: list[_OutboundExchangeKeyContext] = list()
+    with Session(engine) as session:
+        for id, output in (
+            (obj.id, ReceivedExchangeKeyOutputSchema.model_validate(obj))
+            for obj in session.scalars(statement).all()
+        ):
+            assert output.sent_exchange_key is not None
+            private_key = X25519PrivateKey.generate()
+            public_key = private_key.public_key()
+            signature = signature_key.sign(public_key.public_bytes_raw())
+            request = PostExchangeKeyRequest.model_validate({
+                'recipient_public_key': output.contact.public_key,
+                'response_to': output.sent_exchange_key.public_key,
+                'public_exchange_key': public_key,
+                'signature': signature,
+            })
+            outbound_contexts.append(_OutboundExchangeKeyContext(
+                received_key_id=id,
+                private_exchange_key=private_key,
+                request=request,
+            ))
+    
+    with Session(engine) as session:
+        for context, response in asyncio.run(post_all(outbound_contexts)):
+            if response is not None:
+                received_key = session.get_one(
+                    ReceivedExchangeKey,
+                    context.received_key_id,
+                )
+                input = SentExchangeKeyInputSchema.model_validate({
+                    'private_key': context.private_exchange_key,
+                    'public_key': context.private_exchange_key.public_key(),
+                })
+                sent_exchange_key = SentExchangeKey(**input.model_dump())
+                received_key.sent_exchange_key = sent_exchange_key
+                try:
+                    session.commit()
+                except:
+                    session.rollback()
+

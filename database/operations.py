@@ -25,7 +25,7 @@ def create_fernet_keys(engine: Engine):
             input = FernetKeyInputSchema.model_validate({
                 'key': private_key.exchange(output.public_key),
                 'timestamp': output.timestamp,
-                'contact_id': output.contact_id,
+                'contact_id': output.contact.id,
             })
             obj.fernet_key = FernetKey(**input.model_dump())
             try:

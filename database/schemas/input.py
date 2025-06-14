@@ -110,7 +110,8 @@ from typing import Annotated
 from pydantic import BaseModel, BeforeValidator
 
 from database.models import MessageType
-from schema_components.types import Base64Key, Nonce, UTCTimestamp
+from schema_components.types.common import UTCTimestamp
+from schema_components.types.input import HexNonce, Key
 from schema_components.validators import raw_to_base64
 
 class FernetKeyInputSchema(BaseModel):
@@ -126,15 +127,14 @@ class MessageInputSchema(BaseModel):
     timestamp: UTCTimestamp
     message_type: MessageType
     contact_id: int
-    nonce: Nonce
+    nonce: HexNonce
 
 class SentExchangeKeyInputSchema(BaseModel):
-    private_key: Base64Key
-    public_key: Base64Key
-    contact_id: int
+    private_key: Key
+    public_key: Key
 
 class ReceivedExchangeKeyInputSchema(BaseModel):
-    public_key: Base64Key
+    public_key: Key
     timestamp: UTCTimestamp
     contact_id: int
     sent_exchange_key_id: int | None = None

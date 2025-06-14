@@ -28,6 +28,7 @@ from base64 import urlsafe_b64decode
 from tkinter import messagebox
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from httpx import ConnectError
 from sqlalchemy import create_engine
 from sqlalchemy.exc import ArgumentError as SQLAlchemyArgumentError
 
@@ -83,6 +84,8 @@ class Application(tk.Tk):
         self.rowconfigure(0, weight=1)
         # Restore the window.
         self.deiconify()
+        # Set up an indicator of server connection.
+        self.connected = False
         # Set up repeating calls.
         self.after(
             int(settings.functionality.local_operations_interval * 1000),
@@ -101,7 +104,10 @@ class Application(tk.Tk):
         )
 
     def server_retrieval(self):
-        retrieve_exchange_keys(self.engine, self.signature_key)
+        try:
+            retrieve_exchange_keys(self.engine, self.signature_key)
+        except ConnectError:
+            pass
         self.after(
             int(settings.functionality.server_retrieval_rate * 1000),
             self.server_retrieval,
