@@ -1,5 +1,4 @@
 from sqlalchemy import event
-from sqlalchemy.engine import Engine
 import logging
 
 logging.basicConfig()
@@ -35,6 +34,7 @@ from sqlalchemy.exc import ArgumentError as SQLAlchemyArgumentError
 from app_components.body import Body
 from app_components.dialogs.key_dialogs import SignatureKeyDialog
 from database.models import Base as BaseDatabaseModel
+from database.operations import create_fernet_keys
 from server.operations import retrieve_exchange_keys
 from settings import settings
 
@@ -83,10 +83,21 @@ class Application(tk.Tk):
         self.rowconfigure(0, weight=1)
         # Restore the window.
         self.deiconify()
-        # Set up repeating server retrieval calls.
+        # Set up repeating calls.
+        self.after(
+            int(settings.functionality.local_operations_interval * 1000),
+            self.local_operations,
+        )
         self.after(
             int(settings.functionality.server_retrieval_rate * 1000),
             self.server_retrieval,
+        )
+
+    def local_operations(self):
+        create_fernet_keys(self.engine)
+        self.after(
+            int(settings.functionality.local_operations_interval * 1000),
+            self.local_operations,
         )
 
     def server_retrieval(self):

@@ -35,10 +35,6 @@ class Contact(Base):
         back_populates='contact',
         cascade='all, delete-orphan',
     )
-    sent_exchange_keys: Mapped[list['SentExchangeKey']] = relationship(
-        back_populates='contact',
-        cascade='all, delete-orphan',
-    )
     fernet_keys: Mapped[list['FernetKey']] = relationship(
         back_populates='contact',
         cascade='all, delete-orphan',
@@ -107,24 +103,8 @@ class FernetKey(Base):
     contact: Mapped[Contact] = relationship(
         back_populates='fernet_keys',
     )
-
-class ReceivedExchangeKey(Base):
-    __tablename__ = 'received_exchange_keys'
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-    )
-    public_key: Mapped[str] = mapped_column(
-        String(44),
-        nullable=False,
-        unique=True,
-    )
-    contact_id: Mapped[int] = mapped_column(
-        ForeignKey(
-            column=Contact.id,
-        ),
-    )
-    contact: Mapped[Contact] = relationship(
-        back_populates='received_exchange_keys',
+    received_exchange_key: Mapped['ReceivedExchangeKey'] = relationship(
+        back_populates='fernet_key',
     )
 
 class SentExchangeKey(Base):
@@ -142,11 +122,53 @@ class SentExchangeKey(Base):
         nullable=False,
         unique=True,
     )
+    received_exchange_key: Mapped['ReceivedExchangeKey'] = relationship(
+        back_populates='sent_exchange_key',
+    )
+
+class ReceivedExchangeKey(Base):
+    __tablename__ = 'received_exchange_keys'
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+    public_key: Mapped[str] = mapped_column(
+        String(44),
+        nullable=False,
+        unique=True,
+    )
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
     contact_id: Mapped[int] = mapped_column(
         ForeignKey(
             column=Contact.id,
         ),
     )
     contact: Mapped[Contact] = relationship(
-        back_populates='sent_exchange_keys',
+        back_populates='received_exchange_keys',
+    )
+    sent_exchange_key_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            column=SentExchangeKey.id,
+        ),
+        unique=True,
+        nullable=True,
+        default=None,
+    )
+    sent_exchange_key: Mapped[SentExchangeKey] = relationship(
+        back_populates='received_exchange_key',
+        single_parent=True,
+    )
+    fernet_key_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            column=FernetKey.id,
+        ),
+        unique=True,
+        nullable=True,
+        default=None,
+    )
+    fernet_key: Mapped[FernetKey] = relationship(
+        back_populates='received_exchange_key',
+        single_parent=True,
     )
