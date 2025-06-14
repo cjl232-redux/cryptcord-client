@@ -7,8 +7,6 @@
 import asyncio
 
 from datetime import datetime, timezone
-from types import CoroutineType
-from typing import Any
 
 import httpx
 
@@ -31,6 +29,7 @@ from database.schemas.input import (
 from database.schemas.output import (
     ReceivedExchangeKeyOutputSchema,
 )
+from schema_components.validators import key_to_base64
 from server.schemas.requests import (
     FetchDataRequest,
     PostExchangeKeyRequest,
@@ -97,6 +96,8 @@ def post_message():
 #                 session.add(SentExchangeKey(**input.model_dump()))
 #                 session.commit()
 
+
+
 def retrieve_exchange_keys(
         engine: Engine,
         signature_key: Ed25519PrivateKey,
@@ -132,7 +133,7 @@ def retrieve_exchange_keys(
         )
         for element in response.data.elements:
             # Check the basic filtering conditions.
-            if element.sender_public_key_b64 not in contact_dict:
+            if key_to_base64(element.sender_public_key) not in contact_dict:
                 continue
             elif not element.is_valid:
                 continue
@@ -142,7 +143,7 @@ def retrieve_exchange_keys(
                     SentExchangeKey,
                 ).where(
                     SentExchangeKey.public_key
-                    == element.initial_exchange_key_b64,
+                    == key_to_base64(element.initial_exchange_key)
                 ).join(
                     ReceivedExchangeKey,
                 ).where(
@@ -159,7 +160,9 @@ def retrieve_exchange_keys(
             input = ReceivedExchangeKeyInputSchema.model_validate({
                 'public_key': element.transmitted_exchange_key,
                 'timestamp': element.timestamp,
-                'contact_id': contact_dict[element.sender_public_key_b64],
+                'contact_id': contact_dict[
+                    key_to_base64(element.sender_public_key)
+                ],
                 'sent_exchange_key_id': sent_exchange_key_id,
             })
             with Session(engine) as session:
@@ -215,23 +218,21 @@ def post_pending_exchange_keys(
     )
     outbound_contexts: list[_OutboundExchangeKeyContext] = list()
     with Session(engine) as session:
-        for id, output in (
-            (obj.id, ReceivedExchangeKeyOutputSchema.model_validate(obj))
-            for obj in session.scalars(statement).all()
-        ):
-            assert output.sent_exchange_key is not None
-            private_key = X25519PrivateKey.generate()
-            public_key = private_key.public_key()
-            signature = signature_key.sign(public_key.public_bytes_raw())
+        for obj in session.scalars(statement):
+            received_key = ReceivedExchangeKeyOutputSchema.model_validate(obj)
+            new_private_key = X25519PrivateKey.generate()
+            new_public_key = new_private_key.public_key()
+            signature = signature_key.sign(new_public_key.public_bytes_raw())
             request = PostExchangeKeyRequest.model_validate({
-                'recipient_public_key': output.contact.public_key,
-                'response_to': output.sent_exchange_key.public_key,
-                'public_exchange_key': public_key,
+                'public_key': signature_key.public_key(),
+                'recipient_public_key': received_key.contact.public_key,
+                'transmitted_exchange_key': new_public_key,
+                'initial_exchange_key': received_key.public_key,
                 'signature': signature,
             })
             outbound_contexts.append(_OutboundExchangeKeyContext(
-                received_key_id=id,
-                private_exchange_key=private_key,
+                received_key_id=received_key.id,
+                private_exchange_key=new_private_key,
                 request=request,
             ))
     
@@ -252,4 +253,3 @@ def post_pending_exchange_keys(
                     session.commit()
                 except:
                     session.rollback()
-

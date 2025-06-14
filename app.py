@@ -36,7 +36,10 @@ from app_components.body import Body
 from app_components.dialogs.key_dialogs import SignatureKeyDialog
 from database.models import Base as BaseDatabaseModel
 from database.operations import create_fernet_keys
-from server.operations import retrieve_exchange_keys
+from server.operations import (
+    post_pending_exchange_keys,
+    retrieve_exchange_keys,
+)
 from settings import settings
 
 class Application(tk.Tk):
@@ -106,6 +109,7 @@ class Application(tk.Tk):
     def server_retrieval(self):
         try:
             retrieve_exchange_keys(self.engine, self.signature_key)
+            post_pending_exchange_keys(self.engine, self.signature_key)
         except ConnectError:
             pass
         self.after(

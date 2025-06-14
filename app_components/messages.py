@@ -22,7 +22,7 @@ from database.schemas.output import (
     MessageOutputSchema,
 )
 from server.schemas.requests import PostMessageRequest
-from server.schemas.responses import PostDataResponse
+from server.schemas.responses import PostMessageResponseModel
 from settings import settings
 
 class MessageWindow(tk.Toplevel):
@@ -196,7 +196,9 @@ class MessageWindow(tk.Toplevel):
                     json=data.model_dump(),
                 )
                 if 200 <= response.status_code <= 299:
-                    response = PostDataResponse.model_validate(response.json())
+                    response = PostMessageResponseModel.model_validate(
+                        response.json(),
+                    )
                     with Session(self.engine) as session:
                         message = MessageInputSchema(
                             text=message_text,
