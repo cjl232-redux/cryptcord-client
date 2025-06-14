@@ -202,6 +202,8 @@ def post_pending_exchange_keys(
             )
             return (outbound_context, response)
         else:
+            print(raw_response.json())
+            exit()
             return (outbound_context, None)
     async def post_all(outbound_contexts: list[_OutboundExchangeKeyContext]):
         async with httpx.AsyncClient() as client:
