@@ -1,5 +1,3 @@
-# Eg. append messages from retrieved
-
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
@@ -7,11 +5,8 @@ from database.models import FernetKey, ReceivedExchangeKey
 from database.schemas.input import FernetKeyInputSchema
 from database.schemas.output import ReceivedExchangeKeyOutputSchema
 
-
-
-
 def create_fernet_keys(engine: Engine):
-    """Creates Fernet keys from successfully exchanged keys."""
+    """Create symmetric keys from successful key exchanges."""
     statement = select(
         ReceivedExchangeKey,
     ).where(
