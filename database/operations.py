@@ -16,15 +16,19 @@ def create_fernet_keys(engine: Engine):
     )
     with Session(engine) as session:
         received_keys = (
-            ReceivedExchangeKeyOutputSchema.model_validate(x)
+            (x, ReceivedExchangeKeyOutputSchema.model_validate(x))
             for x in session.scalars(statement).all()
         )
-        for obj in received_keys:
-            assert obj.sent_exchange_key is not None
-            private_key = obj.sent_exchange_key.private_key
+        for obj, output in received_keys:
+            assert output.sent_exchange_key is not None
+            private_key = output.sent_exchange_key.private_key
             input = FernetKeyInputSchema.model_validate({
-                'key': private_key.exchange(obj.public_key),
-                'timestamp': obj.timestamp,
-                'contact_id': obj.contact_id,
+                'key': private_key.exchange(output.public_key),
+                'timestamp': output.timestamp,
+                'contact_id': output.contact_id,
             })
-            session.add(FernetKey(**input.model_dump()))
+            obj.fernet_key = FernetKey(**input.model_dump())
+            try:
+                session.commit()
+            except:
+                session.rollback()
