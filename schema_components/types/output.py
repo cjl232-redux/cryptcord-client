@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Annotated
 
 from cryptography.fernet import Fernet
@@ -12,7 +11,6 @@ from pydantic import AfterValidator, BeforeValidator
 from schema_components.validators import (
     base64_to_raw,
     base64_to_key,
-    datetime_to_str,
     raw_to_base64,
     validate_int_nonce,
 )
@@ -50,8 +48,4 @@ type FernetKeyBytes = Annotated[
 type Signature = Annotated[
     bytes,
     BeforeValidator(lambda x: base64_to_raw(x, 64)),
-]
-type StringTimestamp = Annotated[
-    str,
-    BeforeValidator(datetime_to_str),
 ]

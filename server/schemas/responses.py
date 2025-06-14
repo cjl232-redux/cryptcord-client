@@ -193,20 +193,33 @@ from pydantic import AliasChoices, BaseModel, Field
 
 from schema_components.types.common import UTCTimestamp
 from schema_components.types.output import (
+    IntNonce,
     PublicExchangeKey,
     PublicVerificationKey,
     Signature,
 )
 
-class BaseResponseModel(BaseModel):
+class _BaseResponseModel(BaseModel):
     status: str
     message: str
 
 # Post requests:
-class PostExchangeKeyResponseModel(BaseResponseModel):
+
+class _PostMessageResponseData(BaseModel):
+    timestamp: UTCTimestamp
+    nonce: IntNonce
+
+class PostMessageResponseModel(_BaseResponseModel):
+    data: _PostMessageResponseData
+
+class _PostExchangeKeyResponseData(BaseModel):
     timestamp: UTCTimestamp
 
+class PostExchangeKeyResponseModel(_BaseResponseModel):
+    data: _PostExchangeKeyResponseData
+
 # Fetch requests:
+
 class _FetchAbstractDataResponseElement(BaseModel):
     sender_public_key: PublicVerificationKey = Field(
         validation_alias=AliasChoices(
@@ -216,6 +229,7 @@ class _FetchAbstractDataResponseElement(BaseModel):
     )
     signature: Signature
     timestamp: UTCTimestamp
+
     
     class Config:
         arbitrary_types_allowed = True
@@ -241,8 +255,8 @@ class _FetchExchangeKeysResponseElement(_FetchAbstractDataResponseElement):
     def is_valid(self):
         try:
             self.sender_public_key.verify(
-                signature=self.signature,
-                data=self.transmitted_exchange_key.public_bytes_raw(),
+                self.signature,
+                self.transmitted_exchange_key.public_bytes_raw(),
             )
             return True
         except InvalidSignature:
@@ -258,5 +272,5 @@ class _FetchExchangeKeysResponseDataModel(BaseModel):
     )
 
 
-class FetchExchangeKeysResponseModel(BaseResponseModel):
+class FetchExchangeKeysResponseModel(_BaseResponseModel):
     data: _FetchExchangeKeysResponseDataModel
