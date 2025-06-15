@@ -22,7 +22,7 @@ from database.schemas.output import (
     MessageOutputSchema,
 )
 from server.operations import post_message
-from server.schemas.requests import PostMessageRequest
+from server.schemas.requests import PostMessageRequestModel
 from server.schemas.responses import PostMessageResponseModel
 from settings import settings
 

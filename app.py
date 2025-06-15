@@ -35,11 +35,9 @@ from sqlalchemy.exc import ArgumentError as SQLAlchemyArgumentError
 from app_components.body import Body
 from app_components.dialogs.key_dialogs import SignatureKeyDialog
 from database.models import Base as BaseDatabaseModel
-from database.operations import create_fernet_keys
+from database.operations.operations import create_fernet_keys
 from server.operations import (
     post_pending_exchange_keys,
-    retrieve_exchange_keys,
-    retrieve_messages,
     fetch_data,
 )
 from settings import settings
@@ -54,7 +52,7 @@ class Application(tk.Tk):
         # Attempt to connect to the local database.
         try:
             self.engine = create_engine(settings.local_database.url)
-            event.listen(self.engine, "before_cursor_execute", explain_query)
+            #event.listen(self.engine, "before_cursor_execute", explain_query)
             BaseDatabaseModel.metadata.create_all(self.engine)
         # If this fails, show an error message and terminate the application.
         except SQLAlchemyArgumentError:
@@ -111,6 +109,7 @@ class Application(tk.Tk):
     def server_retrieval(self):
         try:
             fetch_data(self.engine, self.signature_key)
+            post_pending_exchange_keys(self.engine, self.signature_key)
         except ConnectError:
             pass
         self.after(

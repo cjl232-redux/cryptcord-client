@@ -9,10 +9,7 @@ from schema_components.validators import (
     validate_hex_nonce,
 )
 
-type EncryptedMessage = Annotated[
-    str,
-    BeforeValidator(raw_to_base64),
-]
+type EncryptedMessage = str
 type HexNonce = Annotated[
     int | str,
     BeforeValidator(validate_hex_nonce),

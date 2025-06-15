@@ -33,6 +33,7 @@ def _create_exchange_key_object(
         'public_key': key.transmitted_exchange_key,
         'contact_id': contact_id,
         'timestamp': key.timestamp,
+        'sent_exchange_key_id': sent_key_id,
     })
     return ReceivedExchangeKey(**exchange_key_input.model_dump())
 
@@ -46,27 +47,35 @@ def _get_contact_id(session: Session, key_bytes: bytes) -> int | None:
 
 def _get_sent_key_id(session: Session, key_bytes: bytes) -> int | None:
     b64_key = urlsafe_b64encode(key_bytes).decode()
+    print(b64_key)
+    print(session.scalars(select(SentExchangeKey.public_key)).all())
     id_query = (
         select(SentExchangeKey.id)
         .where(SentExchangeKey.public_key == b64_key)
     )
+    print(session.scalar(id_query))
     return session.scalar(id_query)
+
+def _is_valid_received_key(session: Session, key_bytes: bytes) -> bool:
+    b64_key = urlsafe_b64encode(key_bytes).decode()
+    query = (
+        select(ReceivedExchangeKey)
+        .where(ReceivedExchangeKey.public_key == b64_key)
+    )
+    return session.scalar(query) is None
 
 def _is_valid_sent_key_id(session: Session, id: int | None) -> bool:
     if id is None:
         return True
-    query = (
-        select(ReceivedExchangeKey)
-        .where(ReceivedExchangeKey.sent_exchange_key_id == id)
-    )
-    return session.scalar(query) is not None
+    return session.get(SentExchangeKey, id) is not None
 
 def _process_fetched_exchange_key(
         session: Session,
         key: FetchedExchangeKey,
         cache: dict[bytes, int | None],
     ) -> ReceivedExchangeKey | None:
-    if not key.is_valid:
+    key_bytes = key.transmitted_exchange_key.public_bytes_raw()
+    if not key.is_valid or not _is_valid_received_key(session, key_bytes):
         return None
     sender_key_bytes = key.sender_public_key.public_bytes_raw()
     if sender_key_bytes not in cache:
@@ -74,8 +83,11 @@ def _process_fetched_exchange_key(
     contact_id = cache[sender_key_bytes]
     if contact_id is None:
         return None
-    exchange_key_bytes = key.transmitted_exchange_key.public_bytes_raw()
-    sent_key_id = _get_sent_key_id(session, exchange_key_bytes)
+    if key.initial_exchange_key is not None:
+        sent_key_bytes = key.initial_exchange_key.public_bytes_raw()
+        sent_key_id = _get_sent_key_id(session, sent_key_bytes)
+    else:
+        sent_key_id = None
     if not _is_valid_sent_key_id(session, sent_key_id):
         return None
     return _create_exchange_key_object(key, contact_id, sent_key_id)

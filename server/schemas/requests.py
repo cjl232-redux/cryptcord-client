@@ -90,22 +90,22 @@ from schema_components.types.input import (
     StringTimestamp,
 )
 
-class _BaseRequest(BaseModel):
+class _BaseRequestModel(BaseModel):
     public_key: Key
     class Config:
         arbitrary_types_allowed = True
 
-class _BasePostRequest(_BaseRequest):
+class _BasePostRequestModel(_BaseRequestModel):
     recipient_public_key: Key
     signature: Signature
 
-class PostExchangeKeyRequest(_BasePostRequest):
+class PostExchangeKeyRequestModel(_BasePostRequestModel):
     transmitted_exchange_key: Key
     initial_exchange_key: Key | None = None
 
-class PostMessageRequest(_BasePostRequest):
+class PostMessageRequestModel(_BasePostRequestModel):
     encrypted_text: EncryptedMessage
 
-class FetchDataRequest(_BaseRequest):
+class FetchDataRequest(_BaseRequestModel):
     sender_keys: list[str] | None = None
     min_datetime: StringTimestamp | None = None

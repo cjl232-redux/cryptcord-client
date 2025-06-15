@@ -63,22 +63,27 @@ def _get_contact_info(
         .where(Contact.public_key == b64_key)
         .order_by(FernetKey.timestamp.desc())
     )
+    print([x for x in session.scalars(keys_query)])
     return contact_id, [Fernet(x) for x in session.scalars(keys_query)]
 
 def _is_valid_nonce(session: Session, nonce: str) -> bool:
-    statement = (
+    query = (
         select(Message)
         .where(Message.nonce == nonce)
     )
-    return session.scalar(statement) is None
+    return session.scalar(query) is None
 
 def _process_fetched_message(
         session: Session,
         msg: FetchedMessage,
         cache: dict[bytes, tuple[int | None, list[Fernet]]],
     ) -> Message | None:
-    if not msg.is_valid or _is_valid_nonce(session, hex(msg.nonce)):
+    print('debug1')
+    print(f'Ciphertext: {msg.encrypted_text}')
+    print(f'Signature: {msg.signature}')
+    if not msg.is_valid or not _is_valid_nonce(session, hex(msg.nonce)):
         return None
+    print('debug2')
     public_key_bytes = msg.sender_public_key.public_bytes_raw()
     if public_key_bytes not in cache:
         cache[public_key_bytes] = _get_contact_info(session, public_key_bytes)

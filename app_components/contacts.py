@@ -10,6 +10,7 @@ from app_components.messages import MessageWindow
 from app_components.scrollable_frames import ScrollableFrame
 from database.models import Contact
 from database.schemas.output import ContactOutputSchema
+from server.operations import fetch_data, post_exchange_key
 from settings import settings
 
 class _ExistingContactsFrame(ScrollableFrame):
@@ -112,6 +113,7 @@ class ContactsPane(ttk.Frame):
         super().__init__(master)
         # Store relevant variables.
         self.engine = engine
+        self.signature_key = signature_key
         # Create and place widgets.
         self.existing_contacts_frame = _ExistingContactsFrame(
             master=self,
@@ -157,11 +159,16 @@ class ContactsPane(ttk.Frame):
         dialog = AddContactDialog(self)
         self.wait_window(dialog)
         if dialog.result is not None:
-            with Session(self.engine) as session:
-                session.add(Contact(**dialog.result.model_dump()))
+            with Session(self.engine, expire_on_commit=False) as session:
+                contact = Contact(**dialog.result.model_dump())
+                session.add(contact)
                 try:
                     session.commit()
                     self.existing_contacts_frame.reload()
+                    # Perform an immediate server retrieval:
+                    fetch_data(self.engine, self.signature_key)
+                    if not contact.received_exchange_keys:
+                        post_exchange_key(self.engine, self.signature_key, contact.id)
                 except IntegrityError:
                     session.rollback()
                     statement = select(
