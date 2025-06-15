@@ -39,6 +39,8 @@ from database.operations import create_fernet_keys
 from server.operations import (
     post_pending_exchange_keys,
     retrieve_exchange_keys,
+    retrieve_messages,
+    fetch_data,
 )
 from settings import settings
 
@@ -95,7 +97,7 @@ class Application(tk.Tk):
             self.local_operations,
         )
         self.after(
-            int(settings.functionality.server_retrieval_rate * 1000),
+            int(settings.functionality.server_retrieval_interval * 1000),
             self.server_retrieval,
         )
 
@@ -108,12 +110,11 @@ class Application(tk.Tk):
 
     def server_retrieval(self):
         try:
-            retrieve_exchange_keys(self.engine, self.signature_key)
-            post_pending_exchange_keys(self.engine, self.signature_key)
+            fetch_data(self.engine, self.signature_key)
         except ConnectError:
             pass
         self.after(
-            int(settings.functionality.server_retrieval_rate * 1000),
+            int(settings.functionality.server_retrieval_interval * 1000),
             self.server_retrieval,
         )
 

@@ -1,9 +1,25 @@
+from base64 import urlsafe_b64encode
+
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from database.models import FernetKey, ReceivedExchangeKey
-from database.schemas.input import FernetKeyInputSchema
-from database.schemas.output import ReceivedExchangeKeyOutputSchema
+from database.models import (
+    Contact,
+    FernetKey,
+    Message,
+    MessageType,
+    ReceivedExchangeKey,
+)
+from database.schemas.input import (
+    FernetKeyInputSchema,
+    MessageInputSchema,
+    ReceivedExchangeKeyInputSchema,
+)
+from database.schemas.output import (
+    ReceivedExchangeKeyOutputSchema
+)
+from server.schemas.responses import FetchedExchangeKey, FetchedMessage
 
 def create_fernet_keys(engine: Engine):
     """Create symmetric keys from successful key exchanges."""

@@ -136,6 +136,7 @@ from pydantic import BaseModel
 
 from schema_components.types.common import UTCTimestamp
 from schema_components.types.output import (
+    FernetKey,
     IntNonce,
     PrivateExchangeKey,
     PublicExchangeKey,
@@ -174,3 +175,10 @@ class ReceivedExchangeKeyOutputSchema(_ExchangeKeyOutputSchema):
     timestamp: UTCTimestamp
     contact: ContactOutputSchema
     sent_exchange_key: SentExchangeKeyOutputSchema | None
+
+class FernetKeyOutputSchema(BaseModel):
+    key: FernetKey
+    contact: ContactOutputSchema
+    class Config:
+        arbitrary_types_allowed = True
+        from_attributes = True

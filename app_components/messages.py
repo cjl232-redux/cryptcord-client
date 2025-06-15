@@ -1,7 +1,7 @@
 import tkinter as tk
 
 from datetime import datetime
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from zoneinfo import ZoneInfo
 
 import requests
@@ -21,6 +21,7 @@ from database.schemas.output import (
     ContactOutputSchema,
     MessageOutputSchema,
 )
+from server.operations import post_message
 from server.schemas.requests import PostMessageRequest
 from server.schemas.responses import PostMessageResponseModel
 from settings import settings
@@ -169,52 +170,18 @@ class MessageWindow(tk.Toplevel):
         # Retrieve the message text and ensure it isn't empty.
         message_text = self.input_box.get('1.0', tk.END).rstrip()
         if message_text:
-            # Retrieve the recipient public key and the latest Fernet key.
-            with Session(self.engine) as session:
-                contact = ContactOutputSchema.model_validate(
-                    session.get_one(Contact, self.contact_id),
-                )
-                statement = select(
-                    FernetKey,
-                ).where(
-                    FernetKey.contact_id == self.contact_id,
-                ).order_by(
-                    FernetKey.timestamp.desc(),
-                )
-                fernet_obj = session.scalar(statement)
-            if fernet_obj is not None:
-                fernet_key = Fernet(fernet_obj.key.encode())
-                ciphertext = fernet_key.encrypt(message_text.encode())
-                data = PostMessageRequest.model_validate({
-                    'public_key': self.signature_key.public_key(),
-                    'recipient_public_key': contact.public_key,
-                    'encrypted_text': ciphertext,
-                    'signature': self.signature_key.sign(ciphertext)
-                })
-                response = requests.post(
-                    url=settings.server.post_message_url,
-                    json=data.model_dump(),
-                )
-                if 200 <= response.status_code <= 299:
-                    response = PostMessageResponseModel.model_validate(
-                        response.json(),
-                    )
-                    with Session(self.engine) as session:
-                        message = MessageInputSchema(
-                            text=message_text,
-                            timestamp=response.data.timestamp,
-                            message_type=MessageType.SENT,
-                            contact_id=self.contact_id,
-                            nonce=response.data.nonce,
-                        )
-                        session.add(Message(**message.model_dump()))
-                        session.commit()
-                    self._update_message_log()
-                    self.input_box.delete('1.0', tk.END)
-                else:
-                    print('connection failed')
-                    # Error
+            message_posted = post_message(
+                self.engine,
+                self.signature_key,
+                plaintext=message_text,
+                contact_id=self.contact_id,
+            )
+            if message_posted:
+                self._update_message_log()
+                self.input_box.delete('1.0', tk.END)
             else:
-                print('no fernet key')
-                # Error message
+                messagebox.showerror(
+                    title='Error',
+                    message='Failed to post message.',
+                )
         return 'break'

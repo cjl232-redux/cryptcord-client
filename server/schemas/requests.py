@@ -101,7 +101,7 @@ class _BasePostRequest(_BaseRequest):
 
 class PostExchangeKeyRequest(_BasePostRequest):
     transmitted_exchange_key: Key
-    initial_exchange_key: Key
+    initial_exchange_key: Key | None = None
 
 class PostMessageRequest(_BasePostRequest):
     encrypted_text: EncryptedMessage

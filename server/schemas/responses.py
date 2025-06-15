@@ -229,13 +229,12 @@ class _FetchAbstractDataResponseElement(BaseModel):
     )
     signature: Signature
     timestamp: UTCTimestamp
-
     
     class Config:
         arbitrary_types_allowed = True
 
 
-class _FetchExchangeKeysResponseElement(_FetchAbstractDataResponseElement):
+class FetchedExchangeKey(_FetchAbstractDataResponseElement):
     transmitted_exchange_key: PublicExchangeKey = Field(
         validation_alias=AliasChoices(
             'transmitted_exchange_key',
@@ -264,7 +263,7 @@ class _FetchExchangeKeysResponseElement(_FetchAbstractDataResponseElement):
 
 
 class _FetchExchangeKeysResponseDataModel(BaseModel):
-    elements: list[_FetchExchangeKeysResponseElement] = Field(
+    elements: list[FetchedExchangeKey] = Field(
         validation_alias=AliasChoices(
             'elements',
             'exchange_keys',
@@ -274,3 +273,41 @@ class _FetchExchangeKeysResponseDataModel(BaseModel):
 
 class FetchExchangeKeysResponseModel(_BaseResponseModel):
     data: _FetchExchangeKeysResponseDataModel
+
+
+class FetchedMessage(_FetchAbstractDataResponseElement):
+    encrypted_text: str
+    nonce: IntNonce
+    @cached_property
+    def is_valid(self):
+        try:
+            self.sender_public_key.verify(
+                self.signature,
+                self.encrypted_text.encode(),
+            )
+            return True
+        except InvalidSignature:
+            return False
+
+
+class _FetchMessagesResponseDataModel(BaseModel):
+    elements: list[FetchedMessage] = Field(
+        validation_alias=AliasChoices(
+            'elements',
+            'messages',
+            'encrypted_messages',
+        )
+    )
+
+
+class FetchMessagesResponseModel(_BaseResponseModel):
+    data: _FetchMessagesResponseDataModel
+
+
+class _FetchDataResponseData(BaseModel):
+    exchange_keys: list[FetchedExchangeKey]
+    messages: list[FetchedMessage]
+
+
+class FetchDataResponse(_BaseResponseModel):
+    data: _FetchDataResponseData

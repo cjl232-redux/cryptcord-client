@@ -19,84 +19,139 @@ from sqlalchemy.orm import Session
 from database.models import (
     Contact,
     FernetKey,
+    Message,
+    MessageType,
     ReceivedExchangeKey,
     SentExchangeKey,
 )
+from database.operations.messages import add_fetched_messages
+from database.operations.exchange_keys import add_fetched_exchange_keys
 from database.schemas.input import (
+    MessageInputSchema,
     ReceivedExchangeKeyInputSchema,
     SentExchangeKeyInputSchema,
 )
 from database.schemas.output import (
+    ContactOutputSchema,
+    FernetKeyOutputSchema,
     ReceivedExchangeKeyOutputSchema,
 )
 from schema_components.validators import key_to_base64
 from server.schemas.requests import (
     FetchDataRequest,
     PostExchangeKeyRequest,
+    PostMessageRequest,
 )
 from server.schemas.responses import (
+    FetchDataResponse,
     FetchExchangeKeysResponseModel,
+    FetchMessagesResponseModel,
     PostExchangeKeyResponseModel,
+    PostMessageResponseModel,
 )
 from settings import settings
 
-def post_message():
-    pass
+CLIENT = httpx.Client()
 
-# def post_exchange_key(
-#         engine: Engine,
-#         signature_key: Ed25519PrivateKey,
-#         contact_id: int,
-#         received_key_id: int | None = None,
-#     ):
-#     with Session(engine) as session:
-#         contact = ContactOutputSchema.model_validate(
-#             session.get_one(Contact, contact_id),
-#         )
-#         if received_key_id is not None:
-#             received_key = PendingExchangeKeyOutputSchema.model_validate(
-#                 session.get_one(ReceivedExchangeKey, received_key_id),
-#             )
-#             received_key = received_key.public_key
-#         else:
-#             received_key = None
-#     private_exchange_key = X25519PrivateKey.generate()
-#     public_exchange_key = private_exchange_key.public_key()
-#     signature = signature_key.sign(public_exchange_key.public_bytes_raw())
-#     request_body = PostExchangeKeyRequest.model_validate({
-#         'public_key': signature_key.public_key(),
-#         'recipient_public_key': contact.public_key,
-#         'signature': signature,
-#         'exchange_key': public_exchange_key,
-#         'response_to': received_key if received_key is not None else None,
-#     })
-#     raw_response = requests.post(
-#         url=settings.server.post_exchange_key_url,
-#         json=request_body.model_dump(),
-#     )
-#     if 200 <= raw_response.status_code <= 299:
-#         response = PostDataResponse.model_validate(raw_response.json())
-#         if received_key is not None:
-#             secret_bytes = private_exchange_key.exchange(received_key)
-#             input = FernetKeyInputSchema.model_validate({
-#                 'key': urlsafe_b64encode(secret_bytes),
-#                 'timestamp': response.data.timestamp,
-#                 'contact_id': contact_id,
-#             })
-#             with Session(engine) as session:
-#                 session.add(FernetKey(**input.model_dump()))
-#                 session.commit()
-#         else:
-#             input = SentExchangeKeyInputSchema.model_validate({
-#                 'private_key': private_exchange_key,
-#                 'public_key': public_exchange_key,
-#                 'contact_id': contact_id,
-#             })
-#             with Session(engine) as session:
-#                 session.add(SentExchangeKey(**input.model_dump()))
-#                 session.commit()
+def fetch_data(
+        engine: Engine,
+        signature_key: Ed25519PrivateKey,
+    ):
+    """Fetch all data stored on the server that is addressed to the user."""
+    with Session(engine) as session:
+        contact_dict: dict[str, int] = {
+            x.public_key: x.id
+            for x in session.scalars(select(Contact))
+        }
+    if not contact_dict:
+        return
+    request = FetchDataRequest.model_validate({
+        'public_key': signature_key.public_key(),
+        'sender_keys': [x for x in contact_dict.keys()],
+    })
+    raw_response = CLIENT.post(
+        url=settings.server.fetch_data_url,
+        json=request.model_dump(),
+    )
+    if raw_response.status_code == 200:
+        response = FetchDataResponse.model_validate(raw_response.json())
+        add_fetched_messages(engine, response.data.messages)
+        add_fetched_exchange_keys(engine, response.data.exchange_keys)
+            
 
-
+def retrieve_messages(
+        engine: Engine,
+        signature_key: Ed25519PrivateKey,
+    ):
+    # Retrieve request filtering parameters.
+    with Session(engine) as session:
+        contact_dict: dict[str, int] = {
+            x.public_key: x.id
+            for x in session.scalars(select(Contact))
+        }
+        min_datetime: datetime | None = session.query(
+            func.max(FernetKey.timestamp)
+        ).scalar()
+        if min_datetime is not None:
+            min_datetime = min_datetime.astimezone(timezone.utc)
+    # Do not send any request if no contacts are registered.
+    if not contact_dict:
+        return
+    # Otherwise, construct and send the request.
+    request_body = FetchDataRequest.model_validate({
+        'public_key': signature_key.public_key(),
+        'sender_keys': [x for x in contact_dict.keys()],
+        'min_datetime': min_datetime,
+    })
+    raw_response = CLIENT.post(
+        url = settings.server.retrieve_messages_url,
+        json=request_body.model_dump(),
+    )
+    # Add any returned keys that haven't already been stored.
+    if 200 <= raw_response.status_code <= 299:
+        response = FetchMessagesResponseModel.model_validate(
+            raw_response.json(),
+        )
+        with Session(engine) as session:
+            for element in response.data.elements:
+                # Check the basic filtering conditions.
+                if key_to_base64(element.sender_public_key) not in contact_dict:
+                    continue
+                elif not element.is_valid:
+                    continue
+                contact_id = contact_dict[
+                    key_to_base64(element.sender_public_key)
+                ]
+                obj = session.scalar(
+                    select(
+                        FernetKey,
+                    ).where(
+                        FernetKey.contact_id == contact_id,
+                    ).order_by(
+                        FernetKey.timestamp.desc(),
+                    )
+                )
+                if obj is not None:
+                    fernet_output = FernetKeyOutputSchema.model_validate(obj)
+                    message_input = MessageInputSchema.model_validate({
+                        'text': fernet_output.key.decrypt(
+                            element.encrypted_text
+                        ).decode(),
+                        'timestamp': element.timestamp,
+                        'message_type': MessageType.RECEIVED,
+                        'nonce': element.nonce,
+                        'contact_id': contact_id,
+                    })
+                    session.add(
+                        ReceivedExchangeKey(**message_input.model_dump()),
+                    )
+                    try:
+                        session.commit()
+                    except:
+                        session.rollback()
+    else:
+        print(raw_response.json())
+        print('connection failed')
 
 def retrieve_exchange_keys(
         engine: Engine,
@@ -122,7 +177,7 @@ def retrieve_exchange_keys(
         'sender_keys': [x for x in contact_dict.keys()],
         'min_datetime': min_datetime,
     })
-    raw_response = httpx.post(
+    raw_response = CLIENT.post(
         url = settings.server.retrieve_exchange_keys_url,
         json=request_body.model_dump(),
     )
@@ -175,12 +230,97 @@ def retrieve_exchange_keys(
         print(raw_response.json())
         print('connection failed')
 
+def post_message(
+        engine: Engine,
+        signature_key: Ed25519PrivateKey,
+        plaintext: str,
+        contact_id: int,
+    ) -> bool:
+    # Retrieve the latest Fernet key for the contact and encrypt the message.
+    with Session(engine) as session:
+        obj = session.scalar(
+            select(
+                FernetKey,
+            ).where(
+                FernetKey.contact_id == contact_id,
+            ).order_by(
+                FernetKey.timestamp.desc(),
+            )
+        )
+        if obj is None:
+            raise ValueError('No encryption key available for contact.')
+        output = FernetKeyOutputSchema.model_validate(obj)
+    ciphertext = output.key.encrypt(plaintext.encode())
+    # Construct and send the request.
+    request = PostMessageRequest.model_validate({
+        'public_key': signature_key.public_key(),
+        'recipient_public_key': output.contact.public_key,
+        'encrypted_text': ciphertext,
+        'signature': signature_key.sign(ciphertext),
+    })
+    raw_response = CLIENT.post(
+        url = settings.server.post_message_url,
+        json=request.model_dump(),
+    )
+    if 200 <= raw_response.status_code <= 299:
+        response = PostMessageResponseModel.model_validate(
+            raw_response.json(),
+        )
+        message_input = MessageInputSchema.model_validate({
+            'text': plaintext,
+            'timestamp': response.data.timestamp,
+            'message_type': MessageType.SENT,
+            'contact_id': contact_id,
+            'nonce': response.data.nonce,
+        })
+        with Session(engine) as session:
+            session.add(Message(**message_input.model_dump()))
+            try:
+                session.commit()
+                return True
+            except:
+                session.rollback()
+    return False
+
 class _OutboundExchangeKeyContext(BaseModel):
     received_key_id: int
     private_exchange_key: X25519PrivateKey
     request: PostExchangeKeyRequest
     class Config:
         arbitrary_types_allowed = True
+
+def post_exchange_key(
+        engine: Engine,
+        signature_key: Ed25519PrivateKey,
+        contact_id: int,
+    ):
+    with Session(engine) as session:
+        obj = session.get(Contact, contact_id)
+        if obj is not None:
+            contact = ContactOutputSchema.model_validate(obj)
+            new_private_key = X25519PrivateKey.generate()
+            new_public_key = new_private_key.public_key()
+            signature = signature_key.sign(new_public_key.public_bytes_raw())
+            request = PostExchangeKeyRequest.model_validate({
+                'public_key': signature_key.public_key(),
+                'recipient_public_key': contact.public_key,
+                'transmitted_exchange_key': new_public_key,
+                'signature': signature,
+            })
+            raw_response = CLIENT.post(
+                settings.server.post_exchange_key_url,
+                json=request.model_dump(),
+            )
+            if 200 <= raw_response.status_code <= 299:
+                input = SentExchangeKeyInputSchema.model_validate({
+                    'private_key': new_private_key,
+                    'public_key': new_public_key,
+                })
+                session.add(SentExchangeKey(**input.model_dump()))
+                try:
+                    session.commit()
+                except:
+                    session.rollback()
 
 def post_pending_exchange_keys(
         engine: Engine,
@@ -189,8 +329,8 @@ def post_pending_exchange_keys(
     """Sends exchange keys for all received keys not yet matched with one."""
     # Define async functions to run connections through.
     async def post_one(
-        client: httpx.AsyncClient,
-        outbound_context: _OutboundExchangeKeyContext,
+            outbound_context: _OutboundExchangeKeyContext,
+            client: httpx.AsyncClient,
         ):
         raw_response = await client.post(
             url=settings.server.post_exchange_key_url,
@@ -205,7 +345,7 @@ def post_pending_exchange_keys(
             return (outbound_context, None)
     async def post_all(outbound_contexts: list[_OutboundExchangeKeyContext]):
         async with httpx.AsyncClient() as client:
-            tasks = [post_one(client, x) for x in outbound_contexts]
+            tasks = [post_one(x, client) for x in outbound_contexts]
             return await asyncio.gather(*tasks)
         
     # Gather all the relevant keys and assemble requests.
@@ -235,6 +375,8 @@ def post_pending_exchange_keys(
                 private_exchange_key=new_private_key,
                 request=request,
             ))
+    print(outbound_contexts)
+    exit()
     
     with Session(engine) as session:
         for context, response in asyncio.run(post_all(outbound_contexts)):
