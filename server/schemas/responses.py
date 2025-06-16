@@ -212,11 +212,11 @@ class _PostMessageResponseData(BaseModel):
 class PostMessageResponseModel(_BaseResponseModel):
     data: _PostMessageResponseData
 
-class _PostExchangeKeyResponseData(BaseModel):
+class _PostKeyResponseData(BaseModel):
     timestamp: UTCTimestamp
 
-class PostExchangeKeyResponseModel(_BaseResponseModel):
-    data: _PostExchangeKeyResponseData
+class PostKeyResponseModel(_BaseResponseModel):
+    data: _PostKeyResponseData
 
 # Fetch requests:
 
@@ -234,7 +234,7 @@ class _FetchAbstractDataResponseElement(BaseModel):
         arbitrary_types_allowed = True
 
 
-class FetchedExchangeKey(_FetchAbstractDataResponseElement):
+class FetchedKey(_FetchAbstractDataResponseElement):
     transmitted_exchange_key: PublicExchangeKey = Field(
         validation_alias=AliasChoices(
             'transmitted_exchange_key',
@@ -263,7 +263,7 @@ class FetchedExchangeKey(_FetchAbstractDataResponseElement):
 
 
 class _FetchExchangeKeysResponseDataModel(BaseModel):
-    elements: list[FetchedExchangeKey] = Field(
+    elements: list[FetchedKey] = Field(
         validation_alias=AliasChoices(
             'elements',
             'exchange_keys',
@@ -305,7 +305,7 @@ class FetchMessagesResponseModel(_BaseResponseModel):
 
 
 class _FetchDataResponseData(BaseModel):
-    exchange_keys: list[FetchedExchangeKey]
+    exchange_keys: list[FetchedKey]
     messages: list[FetchedMessage]
 
 

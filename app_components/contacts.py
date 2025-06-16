@@ -29,7 +29,10 @@ class _ExistingContactsFrame(ScrollableFrame):
         for widget in self.interior.winfo_children():
             widget.grid_forget()
         with Session(self.engine) as session:
-            statement = select(Contact).order_by(Contact.name)
+            statement = (
+                select(Contact)
+                .order_by(Contact.name)
+            )
             contacts = (
                 ContactOutputSchema.model_validate(contact)
                 for contact in session.scalars(statement)
@@ -167,7 +170,7 @@ class ContactsPane(ttk.Frame):
                     self.existing_contacts_frame.reload()
                     # Perform an immediate server retrieval:
                     fetch_data(self.engine, self.signature_key)
-                    if not contact.received_exchange_keys:
+                    if not contact.received_keys:
                         post_exchange_key(self.engine, self.signature_key, contact.id)
                 except IntegrityError:
                     session.rollback()

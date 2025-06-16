@@ -1,4 +1,5 @@
 from base64 import urlsafe_b64encode
+from datetime import datetime
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Engine, select
@@ -25,7 +26,26 @@ def add_fetched_messages(
                 session.add(message)
         session.commit()
 
-def _create_message_object(
+def add_posted_message(
+        engine: Engine,
+        plaintext: str,
+        contact_id: int,
+        timestamp: datetime,
+        nonce: int,
+    ):
+    """Store a posted message after posting an encrypted copy."""
+    message_input = MessageInputSchema.model_validate({
+        'text': plaintext,
+        'contact_id': contact_id,
+        'message_type': MessageType.SENT,
+        'timestamp': timestamp,
+        'nonce': nonce,
+    })
+    with Session(engine) as session:
+        session.add(Message(**message_input.model_dump()))
+        session.commit()
+
+def _create_fetched_message_object(
         msg: FetchedMessage,
         contact_id: int,
         fernet_keys: list[Fernet],
@@ -78,16 +98,12 @@ def _process_fetched_message(
         msg: FetchedMessage,
         cache: dict[bytes, tuple[int | None, list[Fernet]]],
     ) -> Message | None:
-    print('debug1')
-    print(f'Ciphertext: {msg.encrypted_text}')
-    print(f'Signature: {msg.signature}')
     if not msg.is_valid or not _is_valid_nonce(session, hex(msg.nonce)):
         return None
-    print('debug2')
     public_key_bytes = msg.sender_public_key.public_bytes_raw()
     if public_key_bytes not in cache:
         cache[public_key_bytes] = _get_contact_info(session, public_key_bytes)
     contact_id, fernet_keys = cache[public_key_bytes]
     if contact_id is None:
         return None
-    return _create_message_object(msg, contact_id, fernet_keys)
+    return _create_fetched_message_object(msg, contact_id, fernet_keys)

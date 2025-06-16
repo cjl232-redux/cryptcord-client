@@ -170,18 +170,12 @@ class MessageWindow(tk.Toplevel):
         # Retrieve the message text and ensure it isn't empty.
         message_text = self.input_box.get('1.0', tk.END).rstrip()
         if message_text:
-            message_posted = post_message(
-                self.engine,
-                self.signature_key,
+            post_message(
+                engine=self.engine,
+                signature_key=self.signature_key,
                 plaintext=message_text,
                 contact_id=self.contact_id,
             )
-            if message_posted:
-                self._update_message_log()
-                self.input_box.delete('1.0', tk.END)
-            else:
-                messagebox.showerror(
-                    title='Error',
-                    message='Failed to post message.',
-                )
+            self._update_message_log()
+            self.input_box.delete('1.0', tk.END)
         return 'break'

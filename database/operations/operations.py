@@ -1,43 +1,27 @@
-from base64 import urlsafe_b64encode
-
-from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from database.models import (
-    Contact,
-    FernetKey,
-    Message,
-    MessageType,
-    ReceivedExchangeKey,
-)
-from database.schemas.input import (
-    FernetKeyInputSchema,
-    MessageInputSchema,
-    ReceivedExchangeKeyInputSchema,
-)
-from database.schemas.output import (
-    ReceivedExchangeKeyOutputSchema
-)
-from server.schemas.responses import FetchedExchangeKey, FetchedMessage
+from database.models import FernetKey, ReceivedKey
+from database.schemas.input import FernetKeyInputSchema
+from database.schemas.output import ReceivedKeyOutputSchema
 
 def create_fernet_keys(engine: Engine):
     """Create symmetric keys from successful key exchanges."""
     statement = select(
-        ReceivedExchangeKey,
+        ReceivedKey,
     ).where(
-        ReceivedExchangeKey.fernet_key_id == None,
+        ReceivedKey.fernet_key == None,
     ).where(
-        ReceivedExchangeKey.sent_exchange_key != None,
+        ReceivedKey.sent_key != None,
     )
     with Session(engine) as session:
         received_keys = (
-            (x, ReceivedExchangeKeyOutputSchema.model_validate(x))
+            (x, ReceivedKeyOutputSchema.model_validate(x))
             for x in session.scalars(statement).all()
         )
         for obj, output in received_keys:
-            assert output.sent_exchange_key is not None
-            private_key = output.sent_exchange_key.private_key
+            assert output.sent_key is not None
+            private_key = output.sent_key.private_key
             input = FernetKeyInputSchema.model_validate({
                 'key': private_key.exchange(output.public_key),
                 'timestamp': output.timestamp,

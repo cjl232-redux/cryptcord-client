@@ -130,7 +130,7 @@
 # class _ExchangeKeyAbstractSchema(BaseModel):
 
 
-# class ReceivedExchangeKeyOutputSchema(BaseModel):
+# class ReceivedKeyOutputSchema(BaseModel):
 
 from pydantic import BaseModel
 
@@ -167,14 +167,15 @@ class _ExchangeKeyOutputSchema(BaseModel):
         arbitrary_types_allowed = True
         from_attributes = True
 
-class SentExchangeKeyOutputSchema(_ExchangeKeyOutputSchema):
+class SentKeyOutputSchema(_ExchangeKeyOutputSchema):
+    id: int
     private_key: PrivateExchangeKey
 
-class ReceivedExchangeKeyOutputSchema(_ExchangeKeyOutputSchema):
+class ReceivedKeyOutputSchema(_ExchangeKeyOutputSchema):
     id: int
     timestamp: UTCTimestamp
     contact: ContactOutputSchema
-    sent_exchange_key: SentExchangeKeyOutputSchema | None
+    sent_key: SentKeyOutputSchema | None
 
 class FernetKeyOutputSchema(BaseModel):
     key: FernetKey

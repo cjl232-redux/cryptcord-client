@@ -70,7 +70,7 @@
 #     class Config:
 #         arbitary_types_allowed = True
 
-# class PostExchangeKeyRequest(_BasePostRequest):
+# class PostKeyRequest(_BasePostRequest):
 #     exchange_key: _PublicKey = Field
 #     response_to: _PublicKey | None = None
 
@@ -99,7 +99,7 @@ class _BasePostRequestModel(_BaseRequestModel):
     recipient_public_key: Key
     signature: Signature
 
-class PostExchangeKeyRequestModel(_BasePostRequestModel):
+class PostKeyRequestModel(_BasePostRequestModel):
     transmitted_exchange_key: Key
     initial_exchange_key: Key | None = None
 

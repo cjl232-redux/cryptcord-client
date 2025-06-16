@@ -90,13 +90,13 @@
 #     contact_id: int
 #     nonce: _MessageNonce
 
-# class ReceivedExchangeKeyInputSchema(BaseModel):
+# class ReceivedKeyInputSchema(BaseModel):
 #     public_key: _Key
 #     timestamp: Annotated[datetime, AfterValidator(_validate_timestamp)]
 #     contact_id: int
 #     sent_exchange_key_id: int | None = None
 
-# class SentExchangeKeyInputSchema(BaseModel):
+# class SentKeyInputSchema(BaseModel):
 #     private_key: _Key
 #     public_key: _Key
 #     contact_id: int
@@ -129,12 +129,12 @@ class MessageInputSchema(BaseModel):
     contact_id: int
     nonce: HexNonce
 
-class SentExchangeKeyInputSchema(BaseModel):
+class SentKeyInputSchema(BaseModel):
     private_key: Key
     public_key: Key
 
-class ReceivedExchangeKeyInputSchema(BaseModel):
+class ReceivedKeyInputSchema(BaseModel):
     public_key: Key
     timestamp: UTCTimestamp
     contact_id: int
-    sent_exchange_key_id: int | None = None
+    sent_key_id: int | None = None
