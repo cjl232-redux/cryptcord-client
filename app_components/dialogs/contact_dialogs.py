@@ -1,15 +1,24 @@
+import binascii
 import tkinter as tk
 
-from base64 import urlsafe_b64encode
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from tkinter import filedialog, messagebox
 from typing import Annotated
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
 from app_components.dialogs.base import BaseDialog, FieldButtonData
-from app_components.dialogs.validators import validate_key
+
+def _b64_to_public_key(value: str) -> Ed25519PublicKey:
+    try:
+        raw_bytes = urlsafe_b64decode(value)
+        if len(raw_bytes) != 32:
+            raise ValueError('Value must have an unencoded length of 32 bytes')
+        return Ed25519PublicKey.from_public_bytes(raw_bytes)
+    except binascii.Error:
+        raise ValueError('Value is not valid Base64')
 
 def _browse_public_key(_, var: tk.StringVar):
     file = filedialog.askopenfile(mode='rb')
@@ -37,13 +46,14 @@ class _BaseContactModel(BaseModel):
         str,
         Field(title='Name'),
     ]
-
+    class Config:
+        arbitrary_types_allowed = True
 
 class _AddContactDialogModel(_BaseContactModel):
     public_key: Annotated[
-        str,
+        Ed25519PublicKey,
         Field(title='Public Key'),
-        AfterValidator(validate_key),
+        BeforeValidator(_b64_to_public_key),
         FieldButtonData('Browse...', _browse_public_key),
     ]
 

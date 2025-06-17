@@ -1,19 +1,23 @@
+#TODO contacts pane class
+
 from tkinter import messagebox, ttk
 
 import httpx
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from app_components.dialogs.contact_dialogs import AddContactDialog
 from app_components.messages import MessageWindow
 from app_components.scrollable_frames import ScrollableFrame
-from database.models import Contact
-from database.operations.contacts import get_contacts, remove_contact
+from database.operations.contacts import (
+    add_contact,
+    get_contacts,
+    remove_contact,
+)
+from database.schemas.input import ContactInputSchema
 from database.schemas.output import ContactOutputSchema
-from server.operations import fetch_data, post_exchange_key
 from settings import settings
 
 class _ExistingContactsFrame(ScrollableFrame):
@@ -27,6 +31,7 @@ class _ExistingContactsFrame(ScrollableFrame):
         self.engine = engine
         self.signature_key = signature_key
         self.message_windows: dict[int, MessageWindow] = {}
+        self.interior.columnconfigure(0, weight=1)
 
     def reload(self):
         for widget in self.interior.winfo_children():
@@ -58,14 +63,20 @@ class _ExistingContactsFrame(ScrollableFrame):
         )
         if contact.fernet_keys:
             message_button.config(
-                text='Message',
+                text='Open Messages',
                 state='normal',
                 command=(
                     lambda contact=contact:
                         self._open_messages(contact)
                 ),
             )
-        message_button.grid(column=1, row=row, padx=padx, pady=pady)
+        message_button.grid(
+            column=1,
+            row=row,
+            padx=padx,
+            pady=pady,
+            sticky='ew',
+        )
 
         remove_button = ttk.Button(
             master=self.interior,
@@ -75,7 +86,7 @@ class _ExistingContactsFrame(ScrollableFrame):
                     self._remove_contact(contact)
             ),
         )
-        remove_button.grid(column=2, row=row, padx=padx, pady=pady)
+        remove_button.grid(column=2, row=row, padx=0, pady=pady)
 
     def _open_messages(self, contact: ContactOutputSchema):
         message_window = self.message_windows.get(contact.id)
@@ -151,47 +162,21 @@ class ContactsPane(ttk.Frame):
         # Configure grid properties.
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
-        # Perform an initial load of existing contacts.
+        # Load the existing contacts.
         self.existing_contacts_frame.reload()
-        # Will need an AFTER in here for server retrieval
 
-    def _add_contact(self, *_):
+    def _add_contact(self):
         dialog = AddContactDialog(self)
         self.wait_window(dialog)
-        if dialog.result is not None:
-            with Session(self.engine, expire_on_commit=False) as session:
-                contact = Contact(**dialog.result.model_dump())
-                session.add(contact)
-                try:
-                    session.commit()
-                    self.existing_contacts_frame.reload()
-                    # Perform an immediate server retrieval:
-                    fetch_data(
-                        self.engine,
-                        self.signature_key,
-                        self.http_client,
-                    )
-                    if not contact.received_keys:
-                        post_exchange_key(
-                            self.engine,
-                            self.signature_key,
-                            self.http_client,
-                            contact.id,
-                        )
-                except IntegrityError:
-                    session.rollback()
-                    statement = select(
-                        Contact
-                    ).where(
-                        Contact.public_key == dialog.result.public_key,
-                    )
-                    if session.scalar(statement) is None:
-                        messagebox.showerror(
-                            title='Add Contact Failure',
-                            message='A contact with this name already exists.'
-                        )
-                    else:
-                        messagebox.showerror(
-                            title='Add Contact Failure',
-                            message='A contact with this key already exists.'
-                        )
+        while dialog.result is not None:
+            contact_input = ContactInputSchema.model_validate(dialog.result)
+            try:
+                add_contact(self.engine, contact_input)
+                break
+            except IntegrityError:
+                messagebox.showerror(
+                    title='Add Contact Error',
+                    message='A contact with this name or key already exists.',
+                )
+            dialog = AddContactDialog(self)
+            self.wait_window(dialog)

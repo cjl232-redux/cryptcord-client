@@ -114,6 +114,12 @@ from schema_components.types.common import UTCTimestamp
 from schema_components.types.input import HexNonce, Key
 from schema_components.validators import raw_to_base64
 
+class ContactInputSchema(BaseModel):
+    name: str
+    public_key: Key
+    class Config:
+        from_attributes = True
+
 class FernetKeyInputSchema(BaseModel):
     key: Annotated[
         str,
