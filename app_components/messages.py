@@ -22,8 +22,6 @@ from database.schemas.output import (
     MessageOutputSchema,
 )
 from server.operations import post_message
-from server.schemas.requests import PostMessageRequestModel
-from server.schemas.responses import PostMessageResponseModel
 from settings import settings
 
 class MessageWindow(tk.Toplevel):
@@ -32,23 +30,19 @@ class MessageWindow(tk.Toplevel):
             master: tk.Widget | tk.Tk | tk.Toplevel,
             engine: Engine,
             signature_key: Ed25519PrivateKey,
-            contact_id: int,
-            contact_name: str,
-            contact_public_key: Ed25519PublicKey,
+            contact: ContactOutputSchema,
         ):
         # Call the TopLevel constructor.
         super().__init__(master)
         # Rename the window to the contact name.
-        self.title(contact_name)
+        self.title(contact.name)
         # Store supplied values that are required for methods.
         self.engine = engine
         self.signature_key = signature_key
-        self.contact_id = contact_id
-        self.contact_name = contact_name
-        self.contact_public_key = contact_public_key
+        self.contact = contact
         # Store metadata on loaded messages.
+        self.loaded_nonces: set[int] = set()
         self.last_message_timestamp = datetime.min
-        self.loaded_nonces: set[int] = set()        
         # Create and place widgets.
         self.message_log = ScrollableFrame(self)
         self.message_log.grid(
@@ -89,7 +83,7 @@ class MessageWindow(tk.Toplevel):
             statement = select(
                 Message,
             ).where(
-                Message.contact_id == self.contact_id,
+                Message.contact_id == self.contact.id,
             ).where(
                 Message.timestamp >= self.last_message_timestamp,
             ).order_by(
@@ -109,7 +103,7 @@ class MessageWindow(tk.Toplevel):
                     if message.message_type == MessageType.SENT.value:
                         author_label.config(text='You:')
                     else:
-                        author_label.config(text=f'{self.contact_name}:')
+                        author_label.config(text=f'{self.contact.name}:')
                     author_label.grid(
                         column=0,
                         row=len(self.loaded_nonces),
@@ -168,14 +162,10 @@ class MessageWindow(tk.Toplevel):
         response timestamp and nonce.
         """
         # Retrieve the message text and ensure it isn't empty.
-        message_text = self.input_box.get('1.0', tk.END).rstrip()
-        if message_text:
-            post_message(
-                engine=self.engine,
-                signature_key=self.signature_key,
-                plaintext=message_text,
-                contact_id=self.contact_id,
-            )
-            self._update_message_log()
-            self.input_box.delete('1.0', tk.END)
+        plaintext = self.input_box.get('1.0', tk.END).rstrip()
+        if not plaintext:
+            return
+        post_message(self.engine, self.signature_key, plaintext, self.contact)
+        self._update_message_log()
+        self.input_box.delete('1.0', tk.END)
         return 'break'

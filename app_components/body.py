@@ -3,6 +3,7 @@ import tkinter as tk
 from base64 import urlsafe_b64encode
 from tkinter import ttk
 
+import httpx
 import pyperclip
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -20,9 +21,13 @@ class _Notebook(ttk.Notebook):
             master: 'Body',
             engine: Engine,
             signature_key: Ed25519PrivateKey,
+            http_client: httpx.Client,
         ):
         super().__init__(master)
-        self.add(ContactsPane(self, engine, signature_key), text='Contacts')
+        self.add(
+            child=ContactsPane(self, engine, signature_key, http_client),
+            text='Contacts',
+        )
 
 class _PublicKeyDisplay(ttk.Frame):
     def __init__(
@@ -64,6 +69,7 @@ class Body(ttk.Frame):
             master: tk.Tk,
             engine: Engine,
             signature_key: Ed25519PrivateKey,
+            http_client: httpx.Client,
         ):
         # Call the Frame constructor.
         super().__init__(master)
@@ -72,6 +78,7 @@ class Body(ttk.Frame):
             master=self,
             engine=engine,
             signature_key=signature_key,
+            http_client=http_client,
         ).grid(
             column=0,
             row=0,
@@ -92,45 +99,3 @@ class Body(ttk.Frame):
         # Configure grid properties.
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-
-        
-        # notebook = ttk.Notebook(self)
-        # notebook.add(
-        #     child=ContactsPane(notebook, engine, signature_key),
-        #     text='Contacts',
-        # )
-        # notebook.grid(column=0, row=0, sticky='nsew', padx=)
-
-        # self.notebook = ttk.Notebook(self)
-        # self.notebook.add(
-        #     child=ContactsPane(
-        #         self.notebook,
-        #         engine,
-        #         signature_key,
-        #     ),
-        #     text='Contacts',
-        # )
-        # self.notebook.grid(
-        #     column=0,
-        #     row=0,
-        #     sticky='nsew',
-        #     padx=5,
-        #     pady=5,
-        #     columnspan=2,
-        # )
-        
-        # # Display the user's public key in Base64 form.
-        # public_bytes = signature_key.public_key().public_bytes_raw()
-        # public_bytes_b64 = b64encode(public_bytes).decode()
-        # label = ttk.Label(self, text=f'Your public key: {public_bytes_b64}')
-        # label.grid(column=0, row=1, sticky='w', padx=5, pady=5)
-        # copy_button = ttk.Button(
-        #     master=self,
-        #     text='Copy',
-        #     command=lambda *_: pyperclip.copy(public_bytes_b64),
-        # )
-        # copy_button.grid(column=1, row=1, sticky='w', padx=5, pady=5)
-
-        # # Configure overall grid properties.
-        # self.grid_columnconfigure(1, weight=1)
-        # self.grid_rowconfigure(0, weight=1)

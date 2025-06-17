@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from database.models import Contact, FernetKey, Message, MessageType
 from database.schemas.input import MessageInputSchema
+from database.schemas.output import MessageOutputSchema
 from server.schemas.responses import FetchedMessage
 
 def add_fetched_messages(
@@ -44,6 +45,22 @@ def add_posted_message(
     with Session(engine) as session:
         session.add(Message(**message_input.model_dump()))
         session.commit()
+
+def fetch_unloaded_messages(
+        engine: Engine,
+        contact_id: int,
+        loaded_nonces: list[str],
+    ) -> list[MessageOutputSchema]:
+    query = (
+        select(Message)
+        .where(Message.contact_id == contact_id)
+        .where(~Message.nonce.in_(loaded_nonces))
+        .order_by(Message.timestamp)
+    )
+    with Session(engine) as session:
+        messages = session.scalars(query)
+        return [MessageOutputSchema.model_validate(x) for x in messages]
+
 
 def _create_fetched_message_object(
         msg: FetchedMessage,
@@ -83,7 +100,6 @@ def _get_contact_info(
         .where(Contact.public_key == b64_key)
         .order_by(FernetKey.timestamp.desc())
     )
-    print([x for x in session.scalars(keys_query)])
     return contact_id, [Fernet(x) for x in session.scalars(keys_query)]
 
 def _is_valid_nonce(session: Session, nonce: str) -> bool:

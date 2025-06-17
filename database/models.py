@@ -34,6 +34,7 @@ class Contact(Base):
     fernet_keys: Mapped[list['FernetKey']] = relationship(
         back_populates='contact',
         cascade='all, delete-orphan',
+        order_by='FernetKey.timestamp',
     )
     received_keys: Mapped[list['ReceivedKey']] = relationship(
         back_populates='contact',

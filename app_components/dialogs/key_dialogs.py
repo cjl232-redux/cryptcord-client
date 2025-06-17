@@ -6,14 +6,14 @@ from typing import Annotated
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
 from app_components.dialogs.base import (
     BaseDialog,
     FieldButtonData,
     FieldPropertiesData,
 )
-from app_components.dialogs.validators import validate_key
+from schema_components.validators import base64_to_key
 
 def _toggle_password_visibility(entry: tk.Entry, _):
     entry.config(show='●' if entry.cget('show') == '' else '')
@@ -79,11 +79,13 @@ def _browse_private_key(entry: tk.Entry, var: tk.StringVar):
 
 class _SignatureKeyDialogModel(BaseModel):
     signature_key: Annotated[
-        str,
+        Ed25519PrivateKey,
         Field(title='Signature Key'),
-        AfterValidator(validate_key),
+        BeforeValidator(lambda x: base64_to_key(x, Ed25519PrivateKey)),
         FieldButtonData('Browse...', _browse_private_key),
     ]
+    class Config:
+        arbitrary_types_allowed = True
 
 class SignatureKeyDialog(BaseDialog[_SignatureKeyDialogModel]):
     TITLE = 'Signature Key'

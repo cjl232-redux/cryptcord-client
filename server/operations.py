@@ -14,15 +14,14 @@ from sqlalchemy.orm import Session
 
 from database.models import (
     Contact,
-    FernetKey,
-    Message,
-    MessageType,
     ReceivedKey,
     SentKey,
 )
-from database.operations.messages import add_fetched_messages
+from database.operations.messages import (
+    add_fetched_messages,
+    add_posted_message,
+)
 from database.operations.exchange_keys import add_fetched_keys, add_sent_key
-from database.schemas.input import MessageInputSchema
 from database.schemas.output import (
     ContactOutputSchema,
     FernetKeyOutputSchema,
@@ -51,6 +50,7 @@ CLIENT = httpx.Client()
 def fetch_data(
         engine: Engine,
         signature_key: Ed25519PrivateKey,
+        http_client: httpx.Client,
     ):
     """Fetch all data stored on the server that is addressed to the user."""
     with Session(engine) as session:
@@ -64,7 +64,7 @@ def fetch_data(
         'public_key': signature_key.public_key(),
         'sender_keys': [x for x in contact_dict.keys()],
     })
-    raw_response = CLIENT.post(
+    raw_response = http_client.post(
         url=settings.server.fetch_data_url,
         json=request.model_dump(),
     )
@@ -76,6 +76,7 @@ def fetch_data(
 def post_exchange_key(
         engine: Engine,
         signature_key: Ed25519PrivateKey,
+        http_client: httpx.Client,
         contact_id: int,
         initial_key_id: int | None = None,
     ):
@@ -91,13 +92,10 @@ def post_exchange_key(
         'transmitted_exchange_key': keys[3],
         'signature': signature_key.sign(keys[3].public_bytes_raw()),
     })
-    try:
-        raw_response = CLIENT.post(
-            url = settings.server.post_exchange_key_url,
-            json=request.model_dump(),
-        )
-    except httpx.ConnectError:
-        raise ResponseServerError('Server connection failed.')
+    raw_response = http_client.post(
+        url = settings.server.post_exchange_key_url,
+        json=request.model_dump(),
+    )
     if 400 <= raw_response.status_code < 500:
         raise ResponseClientError(raw_response.json())
     elif 500 <= raw_response.status_code:
@@ -133,6 +131,7 @@ def post_initial_contact_keys(
 def post_pending_exchange_keys(
         engine: Engine,
         signature_key: Ed25519PrivateKey,
+        http_client: httpx.Client,
     ):
     with Session(engine) as session:
         query = (
@@ -148,6 +147,7 @@ def post_pending_exchange_keys(
         post_exchange_key(
             engine=engine,
             signature_key=signature_key,
+            http_client=http_client,
             contact_id=received_key.contact.id,
             initial_key_id=received_key.id,
         )
@@ -156,15 +156,15 @@ def post_message(
         engine: Engine,
         signature_key: Ed25519PrivateKey,
         plaintext: str,
-        contact_id: int,
+        contact: ContactOutputSchema,
     ):
     """Post a specified message to the server, storing it on success."""
-    contact_public_key, fernet_key = _get_message_keys(engine, contact_id)
+    contact_public_key, fernet_key = _get_message_keys(contact)
     ciphertext = fernet_key.encrypt(plaintext.encode())
     request = PostMessageRequestModel.model_validate({
         'public_key': signature_key.public_key(),
         'recipient_public_key': contact_public_key,
-        'encrypted_text': ciphertext,
+        'encrypted_text': ciphertext.decode(),
         'signature': signature_key.sign(ciphertext),
     })
     try:
@@ -181,16 +181,8 @@ def post_message(
     elif raw_response.status_code != 201:
         raise ResponseUnknownError(raw_response.json())    
     response = PostMessageResponseModel.model_validate(raw_response.json())
-    message_input = MessageInputSchema.model_validate({
-        'text': plaintext,
-        'timestamp': response.data.timestamp,
-        'message_type': MessageType.SENT,
-        'contact_id': contact_id,
-        'nonce': response.data.nonce,
-    })
-    with Session(engine) as session:
-        session.add(Message(**message_input.model_dump()))
-        session.commit()
+    timestamp, nonce = (response.data.timestamp, response.data.nonce)
+    add_posted_message(engine, plaintext, contact.id, timestamp, nonce)
 
 type _key_exchange_keys = tuple[
     Ed25519PublicKey,
@@ -201,7 +193,7 @@ type _key_exchange_keys = tuple[
 
 def _get_key_exchange_keys(
         engine: Engine,
-        contact_id: int,
+        contact_id: ContactOutputSchema,
         initial_key_id: int | None = None,
     ) -> _key_exchange_keys:
     with Session(engine) as session:
@@ -220,18 +212,8 @@ def _get_key_exchange_keys(
     return contact_key, initial_x_key, private_x_key, public_x_key
 
 def _get_message_keys(
-        engine: Engine,
-        contact_id: int,
+        contact: ContactOutputSchema,
     ) -> tuple[Ed25519PublicKey, Fernet]:
-    with Session(engine) as session:
-        query = (
-            select(FernetKey)
-            .join(ReceivedKey)
-            .where(FernetKey.contact_id == contact_id)
-            .order_by(ReceivedKey.timestamp.desc())
-        )
-        obj = session.scalar(query)
-        if obj is None:
-            raise MissingFernetKey(f'No fernet keys for contact #{contact_id}')
-        output = FernetKeyOutputSchema.model_validate(obj)
-    return output.contact.public_key, output.key
+    if not contact.fernet_keys:
+        raise MissingFernetKey(f'No fernet keys exist for {contact.name}')
+    return contact.public_key, contact.fernet_keys[-1].key
