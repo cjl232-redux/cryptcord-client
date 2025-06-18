@@ -55,7 +55,7 @@ def base64_to_key(
         return output_type(value)
     
 def datetime_to_utc(value: datetime):
-    return value.astimezone(timezone.utc)
+    return value.replace(tzinfo=timezone.utc)
 
 def datetime_to_str(value: datetime):
     return datetime_to_utc(value).isoformat()

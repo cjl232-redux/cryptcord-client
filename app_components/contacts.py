@@ -23,11 +23,13 @@ class _ExistingContactsFrame(ScrollableFrame):
             self,
             master: ttk.Frame,
             engine: Engine,
+            http_client: httpx.Client,
             signature_key: Ed25519PrivateKey,
         ):
         super().__init__(master)
         self.engine = engine
         self.signature_key = signature_key
+        self.http_client = http_client
         self.message_windows: dict[int, MessageWindow] = {}
         self.interior.columnconfigure(0, weight=1)
 
@@ -95,6 +97,7 @@ class _ExistingContactsFrame(ScrollableFrame):
                 master=self.winfo_toplevel(),
                 engine=self.engine,
                 signature_key=self.signature_key,
+                http_client=self.http_client,
                 contact=contact,
             )
 
@@ -128,6 +131,7 @@ class ContactsPane(ttk.Frame):
             master=self,
             engine=engine,
             signature_key=signature_key,
+            http_client=http_client,
         )
         self.existing_contacts_frame.grid(
             column=0,

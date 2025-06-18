@@ -5,10 +5,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-from cryptography.hazmat.primitives.asymmetric.x25519 import (
-    X25519PrivateKey,
-    X25519PublicKey,
-)
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
@@ -24,14 +21,12 @@ from database.operations.messages import (
 from database.operations.exchange_keys import add_fetched_keys, add_sent_key
 from database.schemas.output import (
     ContactOutputSchema,
-    FernetKeyOutputSchema,
     ReceivedKeyOutputSchema,
 )
 from server.exceptions import (
     MissingFernetKey,
-    ResponseClientError,
-    ResponseServerError,
-    ResponseUnknownError,
+    ClientError,
+    ServerError,
 )
 from server.schemas.requests import (
     FetchDataRequest,
@@ -45,7 +40,15 @@ from server.schemas.responses import (
 )
 from settings import settings
 
-CLIENT = httpx.Client()
+def check_connection(http_client: httpx.Client) -> bool:
+    try:
+        http_client.get(
+            url=settings.server.ping_url,
+            timeout=settings.server.ping_timeout,
+        )
+        return True
+    except (httpx.ConnectError, httpx.TimeoutException):
+        return False
 
 def fetch_data(
         engine: Engine,
@@ -77,56 +80,53 @@ def post_exchange_key(
         engine: Engine,
         signature_key: Ed25519PrivateKey,
         http_client: httpx.Client,
-        contact_id: int,
-        initial_key_id: int | None = None,
+        contact: ContactOutputSchema,
+        initial_key: ReceivedKeyOutputSchema | None = None,
     ):
-    keys = _get_key_exchange_keys(
-        engine,
-        contact_id,
-        initial_key_id,
-    )
+    private_key = X25519PrivateKey.generate()
+    public_key = private_key.public_key()
     request = PostKeyRequestModel.model_validate({
         'public_key': signature_key.public_key(),
-        'recipient_public_key': keys[0],
-        'initial_exchange_key': keys[1],
-        'transmitted_exchange_key': keys[3],
-        'signature': signature_key.sign(keys[3].public_bytes_raw()),
+        'recipient_public_key': contact.public_key,
+        'transmitted_exchange_key': public_key,
+        'initial_exchange_key': (
+            initial_key.public_key if initial_key is not None else None
+        ),
+        'signature': signature_key.sign(public_key.public_bytes_raw()),
     })
     raw_response = http_client.post(
         url = settings.server.post_exchange_key_url,
         json=request.model_dump(),
     )
     if 400 <= raw_response.status_code < 500:
-        raise ResponseClientError(raw_response.json())
+        raise ClientError(raw_response)
     elif 500 <= raw_response.status_code:
-        raise ResponseServerError(raw_response.json())
-    elif raw_response.status_code != 201:
-        raise ResponseUnknownError(raw_response.json())    
+        raise ServerError(raw_response)
     response = PostKeyResponseModel.model_validate(raw_response.json())
-    add_sent_key(engine, keys[2], initial_key_id, response.data.timestamp)
+    add_sent_key(engine, private_key, initial_key, response.data.timestamp)
 
+# TODO expand outputs to avoid this clunky workaround rather than
+# essentially doing a join
 def post_initial_contact_keys(
         engine: Engine,
         signature_key: Ed25519PrivateKey,
+        http_client: httpx.Client,
     ):
-    contact_ids: list[int] = []
     with Session(engine) as session:
-        for contact_id in session.scalars(select(Contact.id)):
+        for obj in session.scalars(select(Contact.id)):
+            contact = ContactOutputSchema.model_validate(obj)
             received_key_query = (
                 select(ReceivedKey)
-                .where(ReceivedKey.contact_id == contact_id)
+                .where(ReceivedKey.contact_id == contact.id)
             )
             sent_key_query = (
                 select(SentKey)
-                .where(SentKey.contact_id == contact_id)
+                .where(SentKey.received_key.contact_id == contact.id)
             )
             received_key = session.scalar(received_key_query)
             sent_key = session.scalar(sent_key_query)
             if received_key is None and sent_key is None:
-                contact_ids.append(contact_id)
-    for contact_id in contact_ids:
-        post_exchange_key(engine, signature_key, contact_id)
-
+                post_exchange_key(engine, signature_key, http_client, contact)
 
 def post_pending_exchange_keys(
         engine: Engine,
@@ -148,13 +148,14 @@ def post_pending_exchange_keys(
             engine=engine,
             signature_key=signature_key,
             http_client=http_client,
-            contact_id=received_key.contact.id,
-            initial_key_id=received_key.id,
+            contact=received_key.contact,
+            initial_key=received_key,
         )
 
 def post_message(
         engine: Engine,
         signature_key: Ed25519PrivateKey,
+        http_client: httpx.Client,
         plaintext: str,
         contact: ContactOutputSchema,
     ):
@@ -167,49 +168,44 @@ def post_message(
         'encrypted_text': ciphertext.decode(),
         'signature': signature_key.sign(ciphertext),
     })
-    try:
-        raw_response = CLIENT.post(
-            url = settings.server.post_message_url,
-            json=request.model_dump(),
-        )
-    except httpx.ConnectError:
-        raise ResponseServerError('Server connection failed.')
+    raw_response = http_client.post(
+        url = settings.server.post_message_url,
+        json=request.model_dump(),
+    )
     if 400 <= raw_response.status_code < 500:
-        raise ResponseClientError(raw_response.json())
+        raise ClientError(raw_response)
     elif 500 <= raw_response.status_code:
-        raise ResponseServerError(raw_response.json())
-    elif raw_response.status_code != 201:
-        raise ResponseUnknownError(raw_response.json())    
+        raise ServerError(raw_response) 
     response = PostMessageResponseModel.model_validate(raw_response.json())
     timestamp, nonce = (response.data.timestamp, response.data.nonce)
     add_posted_message(engine, plaintext, contact.id, timestamp, nonce)
 
-type _key_exchange_keys = tuple[
-    Ed25519PublicKey,
-    X25519PublicKey | None,
-    X25519PrivateKey,
-    X25519PublicKey,
-]
+# type _key_exchange_keys = tuple[
+#     Ed25519PublicKey,
+#     X25519PublicKey | None,
+#     X25519PrivateKey,
+#     X25519PublicKey,
+# ]
 
-def _get_key_exchange_keys(
-        engine: Engine,
-        contact_id: ContactOutputSchema,
-        initial_key_id: int | None = None,
-    ) -> _key_exchange_keys:
-    with Session(engine) as session:
-        contact = session.get_one(Contact, contact_id)
-        contact_output = ContactOutputSchema.model_validate(contact)
-        contact_key = contact_output.public_key
-        if initial_key_id is not None:
-            initial_x_key_output = ReceivedKeyOutputSchema.model_validate(
-                session.get_one(ReceivedKey, initial_key_id),
-            )
-            initial_x_key = initial_x_key_output.public_key
-        else:
-            initial_x_key = None
-    private_x_key = X25519PrivateKey.generate()
-    public_x_key = private_x_key.public_key()
-    return contact_key, initial_x_key, private_x_key, public_x_key
+# # def _get_key_exchange_keys(
+# #         engine: Engine,
+# #         contact: ContactOutputSchema,
+# #         initial_key_id: int | None = None,
+# #     ) -> _key_exchange_keys:
+# #     with Session(engine) as session:
+# #         contact = session.get_one(Contact, contact_id)
+# #         contact_output = ContactOutputSchema.model_validate(contact)
+# #         contact_key = contact_output.public_key
+# #         if initial_key_id is not None:
+# #             initial_x_key_output = ReceivedKeyOutputSchema.model_validate(
+# #                 session.get_one(ReceivedKey, initial_key_id),
+# #             )
+# #             initial_x_key = initial_x_key_output.public_key
+# #         else:
+# #             initial_x_key = None
+# #     private_x_key = X25519PrivateKey.generate()
+# #     public_x_key = private_x_key.public_key()
+# #     return contact_key, initial_x_key, private_x_key, public_x_key
 
 def _get_message_keys(
         contact: ContactOutputSchema,

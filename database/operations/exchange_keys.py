@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from database.models import Contact, ReceivedKey, SentKey
 from database.schemas.input import ReceivedKeyInputSchema, SentKeyInputSchema
+from database.schemas.output import ReceivedKeyOutputSchema
 from server.schemas.responses import FetchedKey
 
 def add_fetched_keys(
@@ -29,7 +30,7 @@ def add_fetched_keys(
 def add_sent_key(
         engine: Engine,
         private_key: X25519PrivateKey,
-        received_key_id: int | None,
+        initial_key_output: ReceivedKeyOutputSchema | None,
         response_timestamp: datetime | None,
     ):
     input = SentKeyInputSchema.model_validate({
@@ -38,8 +39,8 @@ def add_sent_key(
     })
     sent_key = SentKey(**input.model_dump())
     with Session(engine) as session:
-        if received_key_id is not None:
-            received_key = session.get_one(ReceivedKey, received_key_id)
+        if initial_key_output is not None:
+            received_key = session.get_one(ReceivedKey, initial_key_output.id)
             received_key.sent_key = sent_key
             if response_timestamp is not None:
                 received_key.timestamp = response_timestamp

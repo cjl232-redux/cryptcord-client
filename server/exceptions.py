@@ -1,14 +1,8 @@
 class MissingFernetKey(Exception):
     pass
 
-class ResponseError(Exception):
+class ClientError(Exception):
     pass
 
-class ResponseClientError(ResponseError):
-    pass
-
-class ResponseServerError(ResponseError):
-    pass
-
-class ResponseUnknownError(ResponseError):
+class ServerError(Exception):
     pass

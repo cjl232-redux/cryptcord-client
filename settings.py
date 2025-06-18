@@ -30,6 +30,9 @@ class _ServerSettingsModel(BaseModel):
     retrieve_messages_url: str = 'http://127.0.0.1:8000/messages/retrieve'
     retrieve_exchange_keys_url: str = 'http://127.0.0.1:8000/exchange-keys/retrieve'
     fetch_data_url: str = 'http://127.0.0.1:8000/data/fetch'
+    ping_url: str = 'http://127.0.0.1:8000/ping'
+    ping_timeout: float = Field(default=1.0, gt=0.0)
+    request_timeout: float = Field(default=5.0, gt=0.0)
 
 class _SettingsModel(BaseModel):
     local_database: _DatabaseSettingsModel = _DatabaseSettingsModel()
@@ -37,8 +40,12 @@ class _SettingsModel(BaseModel):
     graphics: _GraphicsSettingsModel = _GraphicsSettingsModel()
     server: _ServerSettingsModel = _ServerSettingsModel()
     window_name: str = 'Cryptcord'
+    def get_font(self):
+        return (self.graphics.font_family, self.graphics.font_size)
+    def get_font_bold(self):
+        return self.get_font() + ('bold',)
     class Config:
-        validate_default = True
+        validate_default = True           
 
 
 def _load_settings():

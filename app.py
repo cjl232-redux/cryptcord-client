@@ -39,8 +39,9 @@ from sqlalchemy.exc import ArgumentError as SQLAlchemyArgumentError
 from app_components.body import Body
 from app_components.dialogs.key_dialogs import SignatureKeyDialog
 from database.models import Base as BaseDatabaseModel
-from database.operations.operations import create_fernet_keys
+from database.operations.fernet_keys import create_fernet_keys
 from server.operations import (
+    check_connection,
     post_pending_exchange_keys,
     fetch_data,
 )
@@ -74,24 +75,26 @@ class Application(tk.Tk):
         else:
             self.destroy()
             return
-        # Set up an indicator of server connection.
-        self.connected = False
         # Create a HTTP client to use in requests.
-        self.http_client = httpx.Client()
+        self.http_client = httpx.Client(
+            timeout=settings.server.request_timeout,
+        )
+        # Set up an indicator of server connection.
+        self.connected = check_connection(self.http_client)
         # Create and place the application body.
         body = Body(self, self.engine, self.signature_key, self.http_client)
         body.grid(column=0, row=0, sticky='nsew')
         # Configure grid properties.
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        # Restore the window.
-        self.deiconify()
         # Set up repeating calls.
         print('starting local ops')
         self.local_operations()
         print('starting server ops')
         self.server_retrieval()
         print('finished ops')
+        # Restore the window.
+        self.deiconify()
 
     def local_operations(self):
         create_fernet_keys(self.engine)
@@ -101,19 +104,25 @@ class Application(tk.Tk):
         )
 
     def server_retrieval(self):
+        #TODO build into this alterations to a display of whether a conn exists
         try:
-            fetch_data(
-                self.engine,
-                self.signature_key,
-                self.http_client,
-            )
-            post_pending_exchange_keys(
-                self.engine,
-                self.signature_key,
-                self.http_client,
-            )
-        except httpx.ConnectError:
-            pass
+            if self.connected:
+                print('fetching')
+                exit()
+                fetch_data(
+                    self.engine,
+                    self.signature_key,
+                    self.http_client,
+                )
+                post_pending_exchange_keys(
+                    self.engine,
+                    self.signature_key,
+                    self.http_client,
+                )
+            else:
+                self.connected = check_connection(self.http_client)
+        except (httpx.ConnectError, httpx.TimeoutException):
+            self.connected = False
         self.after(
             int(settings.functionality.server_retrieval_interval * 1000),
             self.server_retrieval,
