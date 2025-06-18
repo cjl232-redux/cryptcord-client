@@ -112,4 +112,3 @@ def _process_fetched_key(
     if not _is_valid_sent_key_id(session, sent_key_id):
         return None
     return _create_received_key_object(key, contact_id, sent_key_id)
-    

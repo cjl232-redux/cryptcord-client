@@ -18,7 +18,6 @@ def add_contact(engine: Engine, input: ContactInputSchema):
         session.add(Contact(**input.model_dump()))
         session.commit()
 
-
 def remove_contact(engine: Engine, id: int):
     with Session(engine) as session:
         session.delete(session.get_one(Contact, id))

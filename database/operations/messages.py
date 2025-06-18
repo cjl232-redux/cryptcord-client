@@ -61,7 +61,6 @@ def fetch_unloaded_messages(
         messages = session.scalars(query)
         return [MessageOutputSchema.model_validate(x) for x in messages]
 
-
 def _create_fetched_message_object(
         msg: FetchedMessage,
         contact_id: int,
