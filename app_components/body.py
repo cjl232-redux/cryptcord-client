@@ -2,6 +2,7 @@ import tkinter as tk
 
 from base64 import urlsafe_b64encode
 from tkinter import ttk
+from urllib.parse import urlparse
 
 import httpx
 import pyperclip
@@ -70,10 +71,25 @@ class Body(ttk.Frame):
             engine: Engine,
             signature_key: Ed25519PrivateKey,
             http_client: httpx.Client,
+            connected: bool,
         ):
         # Call the Frame constructor.
         super().__init__(master)
         # Create and place widgets.
+        self.connection_indicator = ttk.Label(
+            master=self,
+            anchor='w',
+            font=settings.get_font(),
+        )
+        self.connection_indicator.grid(
+            column=0,
+            row=0,
+            sticky='nsew',
+            padx=settings.graphics.horizontal_padding,
+            pady=settings.graphics.vertical_padding,
+        )
+        self.set_connection_display(connected)
+
         _Notebook(
             master=self,
             engine=engine,
@@ -81,21 +97,31 @@ class Body(ttk.Frame):
             http_client=http_client,
         ).grid(
             column=0,
-            row=0,
+            row=1,
             sticky='nsew',
+            columnspan=2,
             padx=settings.graphics.horizontal_padding,
-            pady=settings.graphics.vertical_padding,
+            pady=(0, settings.graphics.vertical_padding),
         )
         _PublicKeyDisplay(
             master=self,
             public_key=signature_key.public_key(),
         ).grid(
             column=0,
-            row=1,
+            row=2,
             sticky='w',
+            columnspan=2,
             padx=settings.graphics.horizontal_padding,
             pady=(0, settings.graphics.vertical_padding),
         )
         # Configure grid properties.
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+    
+    def set_connection_display(self, connected: bool):
+        netloc = urlparse(settings.server.ping_url).netloc
+        if connected:
+            text = f'Connected to {netloc}.'
+        else:
+            text = f'Attempting to connect to {netloc}...'
+        self.connection_indicator.config(text=text)

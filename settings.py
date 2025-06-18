@@ -12,7 +12,6 @@ class _DatabaseSettingsModel(BaseModel):
 class _FunctionalitySettingsModel(BaseModel):
     local_operations_interval: float = Field(default=5.0, ge=0.001)
     message_refresh_rate: float = Field(default=1.0, ge=0.001)
-    server_operations_interval: float = Field(default=5.0, ge=0.001)
     scroll_speed: int = Field(default=5, ge=1)
 
 class _DialogGraphicsSettingsModel(BaseModel):
@@ -33,6 +32,7 @@ class _ServerSettingsModel(BaseModel):
     ping_url: str = 'http://127.0.0.1:8000/ping'
     ping_timeout: float = Field(default=1.0, gt=0.0)
     request_timeout: float = Field(default=5.0, gt=0.0)
+    operations_interval: float = Field(default=5.0, ge=0.001)
 
 class _SettingsModel(BaseModel):
     local_database: _DatabaseSettingsModel = _DatabaseSettingsModel()

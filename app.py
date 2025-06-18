@@ -42,6 +42,7 @@ from database.models import Base as BaseDatabaseModel
 from database.operations.fernet_keys import create_fernet_keys
 from server.operations import (
     check_connection,
+    post_initial_contact_keys,
     post_pending_exchange_keys,
     fetch_data,
 )
@@ -82,8 +83,14 @@ class Application(tk.Tk):
         # Set up an indicator of server connection.
         self.connected = check_connection(self.http_client)
         # Create and place the application body.
-        body = Body(self, self.engine, self.signature_key, self.http_client)
-        body.grid(column=0, row=0, sticky='nsew')
+        self.body = Body(
+            master=self,
+            engine=self.engine,
+            signature_key=self.signature_key,
+            http_client=self.http_client,
+            connected=self.connected,
+        )
+        self.body.grid(column=0, row=0, sticky='nsew')
         # Configure grid properties.
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
@@ -91,7 +98,7 @@ class Application(tk.Tk):
         print('starting local ops')
         self.local_operations()
         print('starting server ops')
-        self.server_retrieval()
+        self.server_operations()
         print('finished ops')
         # Restore the window.
         self.deiconify()
@@ -103,13 +110,16 @@ class Application(tk.Tk):
             self.local_operations,
         )
 
-    def server_retrieval(self):
-        #TODO build into this alterations to a display of whether a conn exists
+    def server_operations(self):
+        interval = int(settings.server.operations_interval * 1000.0)
         try:
             if self.connected:
-                print('fetching')
-                exit()
                 fetch_data(
+                    self.engine,
+                    self.signature_key,
+                    self.http_client,
+                )
+                post_initial_contact_keys(
                     self.engine,
                     self.signature_key,
                     self.http_client,
@@ -123,10 +133,8 @@ class Application(tk.Tk):
                 self.connected = check_connection(self.http_client)
         except (httpx.ConnectError, httpx.TimeoutException):
             self.connected = False
-        self.after(
-            int(settings.functionality.server_retrieval_interval * 1000),
-            self.server_retrieval,
-        )
+        self.body.set_connection_display(self.connected)
+        self.after(interval, self.server_operations)
 
 
 if __name__ == '__main__':

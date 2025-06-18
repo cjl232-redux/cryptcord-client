@@ -113,7 +113,7 @@ def post_initial_contact_keys(
         http_client: httpx.Client,
     ):
     with Session(engine) as session:
-        for obj in session.scalars(select(Contact.id)):
+        for obj in session.scalars(select(Contact)):
             contact = ContactOutputSchema.model_validate(obj)
             received_key_query = (
                 select(ReceivedKey)
@@ -121,7 +121,8 @@ def post_initial_contact_keys(
             )
             sent_key_query = (
                 select(SentKey)
-                .where(SentKey.received_key.contact_id == contact.id)
+                .where(ReceivedKey.contact_id == contact.id)
+                .join(ReceivedKey)
             )
             received_key = session.scalar(received_key_query)
             sent_key = session.scalar(sent_key_query)
