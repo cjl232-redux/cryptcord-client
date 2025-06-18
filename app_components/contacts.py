@@ -1,5 +1,3 @@
-#TODO contacts pane class
-
 from tkinter import messagebox, ttk
 
 import httpx
