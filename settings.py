@@ -1,3 +1,5 @@
+# TODO split out intervals from functionalities
+
 import os
 
 import yaml
@@ -10,7 +12,7 @@ class _DatabaseSettingsModel(BaseModel):
 class _FunctionalitySettingsModel(BaseModel):
     local_operations_interval: float = Field(default=5.0, ge=0.001)
     message_refresh_rate: float = Field(default=1.0, ge=0.001)
-    server_retrieval_interval: float = Field(default=5.0, ge=0.001)
+    server_operations_interval: float = Field(default=5.0, ge=0.001)
     scroll_speed: int = Field(default=5, ge=1)
 
 class _DialogGraphicsSettingsModel(BaseModel):
@@ -27,8 +29,6 @@ class _GraphicsSettingsModel(BaseModel):
 class _ServerSettingsModel(BaseModel):
     post_message_url: str = 'http://127.0.0.1:8000/data/post/message'
     post_exchange_key_url: str = 'http://127.0.0.1:8000/data/post/exchange-key'
-    retrieve_messages_url: str = 'http://127.0.0.1:8000/messages/retrieve'
-    retrieve_exchange_keys_url: str = 'http://127.0.0.1:8000/exchange-keys/retrieve'
     fetch_data_url: str = 'http://127.0.0.1:8000/data/fetch'
     ping_url: str = 'http://127.0.0.1:8000/ping'
     ping_timeout: float = Field(default=1.0, gt=0.0)

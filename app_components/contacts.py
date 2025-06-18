@@ -182,3 +182,5 @@ class ContactsPane(ttk.Frame):
                 )
             dialog = AddContactDialog(self)
             self.wait_window(dialog)
+        if dialog.result is not None:
+            self.existing_contacts_frame.reload()
