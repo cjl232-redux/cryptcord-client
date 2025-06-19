@@ -123,6 +123,7 @@ class _ExistingContactsFrame(ScrollableFrame):
         )
         if confirmation:
             remove_contact(self.engine, contact.id)
+            self.reload()
     
     def _post_exchange_key(self, contact: ContactOutputSchema):
         try:

@@ -20,14 +20,14 @@ class ScrollableFrame(ttk.Frame):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
         # Place an interior padding frame that will fill the canvas.
-        padding_frame = tk.Frame(self.canvas, background='red')
+        padding_frame = tk.Frame(self.canvas)
         canvas_window = self.canvas.create_window(
             0,
             0,
             window=padding_frame,
             anchor='nw',
         )
-        self.interior = tk.Frame(padding_frame, background='green')
+        self.interior = tk.Frame(padding_frame)
         self.interior.grid(
             row=0,
             column=0,
@@ -52,7 +52,7 @@ class ScrollableFrame(ttk.Frame):
             if yview[1] == 1.0:
                 self.canvas.yview_moveto(1.0)
 
-        padding_frame.bind('<Configure>', on_padding_configure)
+        padding_frame.bind('<Configure>', on_padding_configure) # type: ignore
         # Bind and unbind a mousewheel callback based on the cursor position.
         def on_mousewheel(event: 'tk.Event[Any]'):
             y0, y1 = self.canvas.yview()
