@@ -1,5 +1,4 @@
-# TODO fix bug with endless loop of send key, seems to be happening because fernet keys existing doesn't prevent it
-
+import os
 import time
 import tkinter as tk
 
@@ -68,17 +67,13 @@ class Application(tk.Tk):
         # Configure grid properties.
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
+        # Set up the exit protocol.
+        self.protocol('WM_DELETE_WINDOW', self._on_close)
         # Set up repeating calls.
-        print('starting local ops')
-        #self.local_operations()
-        print('starting server ops')
         self.server_thread = Thread(target=self.operations, daemon=True)
         self.server_thread.start()
-        print('finished ops')
         # Restore the window.
         self.deiconify()
-
-    #def local_operations(self):
 
     def operations(self):
         while self.winfo_exists():
@@ -101,11 +96,17 @@ class Application(tk.Tk):
                     )
                 else:
                     self.connected = check_connection(self.http_client)
-            except (httpx.ConnectError, httpx.TimeoutException):
+            except httpx.NetworkError:
                 self.connected = False
             create_fernet_keys(self.engine)
             self.body.set_connection_display(self.connected)
-            time.sleep(settings.server.operations_interval)
+            time.sleep(settings.server.operations_sleep)
+    
+    def _on_close(self):
+        path = f'{settings.local_database.url}-journal'
+        if os.path.exists(path):
+            os.remove(path)
+
 
 
 if __name__ == '__main__':

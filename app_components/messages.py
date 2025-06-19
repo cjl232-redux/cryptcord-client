@@ -1,6 +1,7 @@
 import tkinter as tk
 
 from datetime import datetime
+from threading import Thread
 from tkinter import messagebox, ttk
 from zoneinfo import ZoneInfo
 
@@ -164,14 +165,18 @@ class MessageWindow(tk.Toplevel):
         try:
             if not check_connection(self.http_client):
                 raise httpx.ConnectError('')
-            post_message(
-                self.engine,
-                self.signature_key,
-                self.http_client,
-                plaintext,
-                self.contact,
+            post_thread = Thread(
+                target=post_message,
+                daemon=True,
+                kwargs={
+                    'engine': self.engine,
+                    'signature_key': self.signature_key,
+                    'http_client': self.http_client,
+                    'plaintext': plaintext,
+                    'contact': self.contact,
+                },
             )
-            self._update_message_log()
+            post_thread.start()
             self.input_box.delete('1.0', tk.END)
         except httpx.ConnectError:
             messagebox.showerror(

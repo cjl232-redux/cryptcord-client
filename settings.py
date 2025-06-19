@@ -1,5 +1,3 @@
-# TODO split out intervals from functionalities
-
 import os
 
 import yaml
@@ -32,7 +30,7 @@ class _ServerSettingsModel(BaseModel):
     ping_url: str = 'http://127.0.0.1:8000/ping'
     ping_timeout: float = Field(default=1.0, gt=0.0)
     request_timeout: float = Field(default=5.0, gt=0.0)
-    operations_interval: float = Field(default=5.0, ge=0.001)
+    operations_sleep: float = Field(default=5.0, ge=0.001)
 
 class _SettingsModel(BaseModel):
     local_database: _DatabaseSettingsModel = _DatabaseSettingsModel()
