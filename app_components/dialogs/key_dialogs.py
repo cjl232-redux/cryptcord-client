@@ -83,6 +83,7 @@ class _SignatureKeyDialogModel(BaseModel):
         Field(title='Signature Key'),
         BeforeValidator(lambda x: base64_to_key(x, Ed25519PrivateKey)),
         FieldButtonData('Browse...', _browse_private_key),
+        FieldPropertiesData(hidden=True),
     ]
     class Config:
         arbitrary_types_allowed = True
