@@ -56,6 +56,7 @@ class MessageWindow(tk.Toplevel):
                 settings.graphics.font_family,
                 settings.graphics.font_size,
             ),
+            wrap='word',
         )
         self.input_box.grid(
             column=0,

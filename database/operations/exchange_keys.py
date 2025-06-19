@@ -7,7 +7,10 @@ from sqlalchemy.orm import Session
 
 from database.models import Contact, ReceivedKey, SentKey
 from database.schemas.input import ReceivedKeyInputSchema, SentKeyInputSchema
-from database.schemas.output import ReceivedKeyOutputSchema
+from database.schemas.output import (
+    ContactOutputSchema,
+    ReceivedKeyOutputSchema,
+)
 from server.schemas.responses import FetchedKey
 
 def add_fetched_keys(
@@ -16,7 +19,7 @@ def add_fetched_keys(
     ):
     """Stores exchange keys retrieved from a server."""
     contact_cache: dict[bytes, int | None] = dict()
-    with Session(engine) as session:
+    with Session(engine).no_autoflush as session:
         for fetched_key in fetched_keys:
             exchange_key = _process_fetched_key(
                 session,
@@ -25,10 +28,14 @@ def add_fetched_keys(
             )
             if exchange_key is not None:
                 session.add(exchange_key)
-        session.commit()
+        try:
+            session.commit()
+        except:
+            session.rollback()
 
 def add_sent_key(
         engine: Engine,
+        contact: ContactOutputSchema,
         private_key: X25519PrivateKey,
         initial_key_output: ReceivedKeyOutputSchema | None,
         response_timestamp: datetime | None,
@@ -36,6 +43,7 @@ def add_sent_key(
     input = SentKeyInputSchema.model_validate({
         'private_key': private_key,
         'public_key': private_key.public_key(),
+        'contact_id': contact.id,
     })
     sent_key = SentKey(**input.model_dump())
     with Session(engine) as session:

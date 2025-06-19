@@ -138,6 +138,7 @@ class MessageInputSchema(BaseModel):
 class SentKeyInputSchema(BaseModel):
     private_key: Key
     public_key: Key
+    contact_id: int
 
 class ReceivedKeyInputSchema(BaseModel):
     public_key: Key

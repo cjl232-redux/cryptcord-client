@@ -40,6 +40,10 @@ class Contact(Base):
         back_populates='contact',
         cascade='all, delete-orphan',
     )
+    sent_keys: Mapped[list['SentKey']] = relationship(
+        back_populates='contact',
+        cascade='all, delete-orphan',
+    )
 
 class MessageType(Enum):
     SENT = 'S'
@@ -119,8 +123,16 @@ class SentKey(Base):
         nullable=False,
         unique=True,
     )
-    received_key: Mapped['ReceivedKey'] = relationship(
+    received_keys: Mapped[list['ReceivedKey']] = relationship(
         back_populates='sent_key',
+    )
+    contact_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            column=Contact.id,
+        ),
+    )
+    contact: Mapped[Contact] = relationship(
+        back_populates='sent_keys',
     )
 
 class ReceivedKey(Base):
@@ -145,18 +157,17 @@ class ReceivedKey(Base):
     contact: Mapped[Contact] = relationship(
         back_populates='received_keys',
     )
-    sent_key_id: Mapped[int] = mapped_column(
+    sent_key_id: Mapped[int | None] = mapped_column(
         ForeignKey(
             column=SentKey.id,
         ),
         nullable=True,
         default=None,
     )
-    sent_key: Mapped[SentKey] = relationship(
-        back_populates='received_key',
-        single_parent=True,
+    sent_key: Mapped[SentKey | None] = relationship(
+        back_populates='received_keys',
     )
-    fernet_key_id: Mapped[int] = mapped_column(
+    fernet_key_id: Mapped[int | None] = mapped_column(
         ForeignKey(
             column=FernetKey.id,
         ),
@@ -164,7 +175,7 @@ class ReceivedKey(Base):
         nullable=True,
         default=None,
     )
-    fernet_key: Mapped[FernetKey] = relationship(
+    fernet_key: Mapped[FernetKey | None] = relationship(
         back_populates='received_key',
         single_parent=True,
     )

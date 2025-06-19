@@ -14,6 +14,8 @@ from database.operations.contacts import (
     get_contacts,
     remove_contact,
 )
+from server.exceptions import ClientError, ServerError
+from server.operations import post_exchange_key
 from database.schemas.input import ContactInputSchema
 from database.schemas.output import ContactOutputSchema
 from settings import settings
@@ -86,7 +88,17 @@ class _ExistingContactsFrame(ScrollableFrame):
                     self._remove_contact(contact)
             ),
         )
-        remove_button.grid(column=2, row=row, padx=0, pady=pady)
+        remove_button.grid(column=2, row=row, padx=padx, pady=pady)
+
+        send_key_button = ttk.Button(
+            master=self.interior,
+            text='Key Exchange',
+            command=(
+                lambda contact=contact:
+                    self._post_exchange_key(contact)
+            ),
+        )
+        send_key_button.grid(column=3, row=row, padx=0, pady=pady)
 
     def _open_messages(self, contact: ContactOutputSchema):
         message_window = self.message_windows.get(contact.id)
@@ -111,6 +123,30 @@ class _ExistingContactsFrame(ScrollableFrame):
         )
         if confirmation:
             remove_contact(self.engine, contact.id)
+    
+    def _post_exchange_key(self, contact: ContactOutputSchema):
+        try:
+            post_exchange_key(
+                engine=self.engine,
+                signature_key=self.signature_key,
+                http_client=self.http_client,
+                contact=contact,
+            )
+        except httpx.ConnectError:
+            messagebox.showerror(
+                title='Connection Error',
+                message='Post failed: the server could not be reached.',
+            )
+        except ClientError as e:
+            messagebox.showerror(
+                title='Client Error',
+                message=f'Post failed: {str(e)}.',
+            )
+        except ServerError as e:
+            messagebox.showerror(
+                title='Server Error',
+                message=f'Post failed: {str(e)}.',
+            )
 
 class ContactsPane(ttk.Frame):
     def __init__(

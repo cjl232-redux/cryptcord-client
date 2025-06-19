@@ -9,11 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from database.models import (
-    Contact,
-    ReceivedKey,
-    SentKey,
-)
+from database.models import Contact, ReceivedKey
 from database.operations.messages import (
     add_fetched_messages,
     add_posted_message,
@@ -103,7 +99,13 @@ def post_exchange_key(
     elif 500 <= raw_response.status_code:
         raise ServerError(raw_response)
     response = PostKeyResponseModel.model_validate(raw_response.json())
-    add_sent_key(engine, private_key, initial_key, response.data.timestamp)
+    add_sent_key(
+        engine=engine,
+        contact=contact,
+        private_key=private_key,
+        initial_key_output=initial_key,
+        response_timestamp=response.data.timestamp,
+    )
 
 # TODO expand outputs to avoid this clunky workaround rather than
 # essentially doing a join
@@ -115,18 +117,7 @@ def post_initial_contact_keys(
     with Session(engine) as session:
         for obj in session.scalars(select(Contact)):
             contact = ContactOutputSchema.model_validate(obj)
-            received_key_query = (
-                select(ReceivedKey)
-                .where(ReceivedKey.contact_id == contact.id)
-            )
-            sent_key_query = (
-                select(SentKey)
-                .where(ReceivedKey.contact_id == contact.id)
-                .join(ReceivedKey)
-            )
-            received_key = session.scalar(received_key_query)
-            sent_key = session.scalar(sent_key_query)
-            if received_key is None and sent_key is None:
+            if not contact.sent_keys:
                 post_exchange_key(engine, signature_key, http_client, contact)
 
 def post_pending_exchange_keys(
@@ -180,33 +171,6 @@ def post_message(
     response = PostMessageResponseModel.model_validate(raw_response.json())
     timestamp, nonce = (response.data.timestamp, response.data.nonce)
     add_posted_message(engine, plaintext, contact.id, timestamp, nonce)
-
-# type _key_exchange_keys = tuple[
-#     Ed25519PublicKey,
-#     X25519PublicKey | None,
-#     X25519PrivateKey,
-#     X25519PublicKey,
-# ]
-
-# # def _get_key_exchange_keys(
-# #         engine: Engine,
-# #         contact: ContactOutputSchema,
-# #         initial_key_id: int | None = None,
-# #     ) -> _key_exchange_keys:
-# #     with Session(engine) as session:
-# #         contact = session.get_one(Contact, contact_id)
-# #         contact_output = ContactOutputSchema.model_validate(contact)
-# #         contact_key = contact_output.public_key
-# #         if initial_key_id is not None:
-# #             initial_x_key_output = ReceivedKeyOutputSchema.model_validate(
-# #                 session.get_one(ReceivedKey, initial_key_id),
-# #             )
-# #             initial_x_key = initial_x_key_output.public_key
-# #         else:
-# #             initial_x_key = None
-# #     private_x_key = X25519PrivateKey.generate()
-# #     public_x_key = private_x_key.public_key()
-# #     return contact_key, initial_x_key, private_x_key, public_x_key
 
 def _get_message_keys(
         contact: ContactOutputSchema,

@@ -147,6 +147,7 @@ class ContactOutputSchema(BaseModel):
     id: int
     name: str
     public_key: PublicVerificationKey
+    sent_keys: 'list[SentKeyOutputSchema]'
     fernet_keys: 'list[FernetKeyOutputSchema]'
     class Config:
         arbitrary_types_allowed = True
