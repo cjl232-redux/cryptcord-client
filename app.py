@@ -106,6 +106,7 @@ class Application(tk.Tk):
         path = f'{settings.local_database.url}-journal'
         if os.path.exists(path):
             os.remove(path)
+        self.destroy()
 
 
 
