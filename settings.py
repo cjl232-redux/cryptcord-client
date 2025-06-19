@@ -45,7 +45,6 @@ class _SettingsModel(BaseModel):
     class Config:
         validate_default = True           
 
-
 def _load_settings():
     # Create the settings file if necessary.
     if not os.path.exists('settings.yaml'):
