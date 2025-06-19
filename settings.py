@@ -8,8 +8,7 @@ class _DatabaseSettingsModel(BaseModel):
     url: str = 'sqlite:///database.db'
 
 class _FunctionalitySettingsModel(BaseModel):
-    local_operations_interval: float = Field(default=5.0, ge=0.001)
-    message_refresh_rate: float = Field(default=1.0, ge=0.001)
+    message_refresh_interval: float = Field(default=1.0, ge=0.001)
     scroll_speed: int = Field(default=5, ge=1)
 
 class _DialogGraphicsSettingsModel(BaseModel):

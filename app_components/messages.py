@@ -145,7 +145,7 @@ class MessageWindow(tk.Toplevel):
                 self.loaded_nonces.append(hex(message.nonce))
                 self.last_message_timestamp = message.timestamp
         self.after(
-            ms=int(settings.functionality.message_refresh_rate * 1000),
+            ms=int(settings.functionality.message_refresh_interval * 1000),
             func=self._update_message_log,
         )
     
